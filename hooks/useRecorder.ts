@@ -9,15 +9,22 @@ import {
   configureAudioMode,
 } from "@/lib/audio";
 
-export type RecorderState = "idle" | "recording" | "saving";
+export type RecorderState = "idle" | "recording" | "paused" | "saving";
+
+const METERING_OPTIONS: Audio.RecordingOptions = {
+  ...RECORDING_OPTIONS,
+  isMeteringEnabled: true,
+};
 
 export function useRecorder(onRecordingComplete?: () => void) {
   const [state, setState] = useState<RecorderState>("idle");
   const [duration, setDuration] = useState(0);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [metering, setMetering] = useState<number>(-160);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     requestAudioPermissions().then(setHasPermission);
@@ -31,7 +38,7 @@ export function useRecorder(onRecordingComplete?: () => void) {
     try {
       await configureAudioMode();
 
-      const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
+      const { recording } = await Audio.Recording.createAsync(METERING_OPTIONS);
       recordingRef.current = recording;
       setState("recording");
       setDuration(0);
@@ -39,16 +46,84 @@ export function useRecorder(onRecordingComplete?: () => void) {
       durationIntervalRef.current = setInterval(() => {
         setDuration((d) => d + 1);
       }, 1000);
+
+      meteringIntervalRef.current = setInterval(async () => {
+        if (recordingRef.current) {
+          try {
+            const status = await recordingRef.current.getStatusAsync();
+            if (status.isRecording && status.metering !== undefined) {
+              setMetering(status.metering);
+            }
+          } catch {
+            // ignore metering errors
+          }
+        }
+      }, 100);
     } catch (error) {
       console.error("Failed to start recording:", error);
       setState("idle");
     }
   }, [state, hasPermission]);
 
-  const stopRecording = useCallback(async () => {
+  const pauseRecording = useCallback(async () => {
     if (state !== "recording" || !recordingRef.current) {
       return;
     }
+
+    try {
+      await recordingRef.current.pauseAsync();
+      setState("paused");
+
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
+      }
+      if (meteringIntervalRef.current) {
+        clearInterval(meteringIntervalRef.current);
+        meteringIntervalRef.current = null;
+      }
+    } catch (error) {
+      console.error("Failed to pause recording:", error);
+    }
+  }, [state]);
+
+  const resumeRecording = useCallback(async () => {
+    if (state !== "paused" || !recordingRef.current) {
+      return;
+    }
+
+    try {
+      await recordingRef.current.startAsync();
+      setState("recording");
+
+      durationIntervalRef.current = setInterval(() => {
+        setDuration((d) => d + 1);
+      }, 1000);
+
+      meteringIntervalRef.current = setInterval(async () => {
+        if (recordingRef.current) {
+          try {
+            const status = await recordingRef.current.getStatusAsync();
+            if (status.isRecording && status.metering !== undefined) {
+              setMetering(status.metering);
+            }
+          } catch {
+            // ignore metering errors
+          }
+        }
+      }, 100);
+    } catch (error) {
+      console.error("Failed to resume recording:", error);
+    }
+  }, [state]);
+
+  const stopRecording = useCallback(async () => {
+    if ((state !== "recording" && state !== "paused") || !recordingRef.current) {
+      return;
+    }
+
+    const recording = recordingRef.current;
+    recordingRef.current = null;
 
     setState("saving");
 
@@ -56,14 +131,21 @@ export function useRecorder(onRecordingComplete?: () => void) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
     }
+    if (meteringIntervalRef.current) {
+      clearInterval(meteringIntervalRef.current);
+      meteringIntervalRef.current = null;
+    }
 
     try {
-      await recordingRef.current.stopAndUnloadAsync();
+      const status = await recording.getStatusAsync();
+      if (status.canRecord) {
+        await recording.stopAndUnloadAsync();
+      }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
 
       const recordingId = id();
       const { filePath, duration: actualDuration } = await saveRecordingLocally(
-        recordingRef.current,
+        recording,
         recordingId
       );
 
@@ -77,15 +159,15 @@ export function useRecorder(onRecordingComplete?: () => void) {
         })
       );
 
-      recordingRef.current = null;
       setDuration(0);
+      setMetering(-160);
       setState("idle");
 
       onRecordingComplete?.();
     } catch (error) {
       console.error("Failed to save recording:", error);
-      recordingRef.current = null;
       setDuration(0);
+      setMetering(-160);
       setState("idle");
     }
   }, [state, onRecordingComplete]);
@@ -99,6 +181,10 @@ export function useRecorder(onRecordingComplete?: () => void) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
     }
+    if (meteringIntervalRef.current) {
+      clearInterval(meteringIntervalRef.current);
+      meteringIntervalRef.current = null;
+    }
 
     try {
       await recordingRef.current.stopAndUnloadAsync();
@@ -108,6 +194,7 @@ export function useRecorder(onRecordingComplete?: () => void) {
 
     recordingRef.current = null;
     setDuration(0);
+    setMetering(-160);
     setState("idle");
   }, []);
 
@@ -115,6 +202,9 @@ export function useRecorder(onRecordingComplete?: () => void) {
     return () => {
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
+      }
+      if (meteringIntervalRef.current) {
+        clearInterval(meteringIntervalRef.current);
       }
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync().catch(() => {});
@@ -126,10 +216,15 @@ export function useRecorder(onRecordingComplete?: () => void) {
     state,
     duration,
     hasPermission,
+    metering,
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
     cancelRecording,
     isRecording: state === "recording",
+    isPaused: state === "paused",
     isSaving: state === "saving",
+    isActive: state === "recording" || state === "paused",
   };
 }

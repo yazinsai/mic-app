@@ -1,20 +1,14 @@
-import { useState } from "react";
-import {
-  View,
-  StyleSheet,
-  SafeAreaView,
-  Pressable,
-  Text,
-  Modal,
-} from "react-native";
+import { View, StyleSheet, SafeAreaView, Pressable, Text, TextInput } from "react-native";
 import { Link } from "expo-router";
-import { RecordButton } from "@/components/RecordButton";
+import * as Haptics from "expo-haptics";
+import { RecordingOverlay } from "@/components/RecordingOverlay";
 import { QueueStatus } from "@/components/QueueStatus";
 import { RecordingsList } from "@/components/RecordingsList";
 import { useQueue } from "@/hooks/useQueue";
+import { useRecorder } from "@/hooks/useRecorder";
+import { colors, spacing, typography, radii, shadows } from "@/constants/Colors";
 
 export default function HomeScreen() {
-  const [showRecordings, setShowRecordings] = useState(false);
   const {
     recordings,
     pendingCount,
@@ -25,68 +19,104 @@ export default function HomeScreen() {
     share,
   } = useQueue();
 
-  const handleRecordingComplete = () => {
+  const {
+    duration,
+    hasPermission,
+    metering,
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+    cancelRecording,
+    isRecording,
+    isPaused,
+    isSaving,
+    isActive,
+  } = useRecorder(() => {
     triggerProcessing();
+  });
+
+  const handleStartRecording = async () => {
+    if (hasPermission === false) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    startRecording();
+  };
+
+  const handlePauseResume = () => {
+    if (isPaused) {
+      resumeRecording();
+    } else {
+      pauseRecording();
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.searchContainer}>
+          <View style={styles.searchIcon}>
+            <View style={styles.searchCircle} />
+            <View style={styles.searchHandle} />
+          </View>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search your recordings"
+            placeholderTextColor={colors.textMuted}
+            editable={false}
+          />
+        </View>
+
         <Link href="/settings" asChild>
-          <Pressable style={styles.settingsButton}>
-            <Text style={styles.settingsText}>Settings</Text>
+          <Pressable style={styles.menuButton}>
+            <View style={styles.menuDots}>
+              <View style={styles.menuDot} />
+              <View style={styles.menuDot} />
+              <View style={styles.menuDot} />
+            </View>
           </Pressable>
         </Link>
       </View>
 
+      {(pendingCount > 0 || failedCount > 0) && (
+        <View style={styles.statusBar}>
+          <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
+        </View>
+      )}
+
       <View style={styles.content}>
-        <RecordButton onRecordingComplete={handleRecordingComplete} />
-      </View>
-
-      <View style={styles.footer}>
-        <QueueStatus
-          pendingCount={pendingCount}
-          failedCount={failedCount}
-          onPress={() => setShowRecordings(true)}
+        <RecordingsList
+          recordings={recordings}
+          onRetry={retry}
+          onDelete={remove}
+          onShare={share}
         />
-
-        {recordings.length > 0 && (
-          <Pressable
-            style={styles.viewAllButton}
-            onPress={() => setShowRecordings(true)}
-          >
-            <Text style={styles.viewAllText}>
-              View all ({recordings.length})
-            </Text>
-          </Pressable>
-        )}
       </View>
 
-      <Modal
-        visible={showRecordings}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowRecordings(false)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Recordings</Text>
-            <Pressable
-              style={styles.closeButton}
-              onPress={() => setShowRecordings(false)}
-            >
-              <Text style={styles.closeText}>Done</Text>
-            </Pressable>
-          </View>
+      <View style={styles.fabContainer}>
+        <Pressable
+          onPress={handleStartRecording}
+          disabled={hasPermission === false}
+          style={({ pressed }) => [
+            styles.fab,
+            pressed && styles.fabPressed,
+            hasPermission === false && styles.fabDisabled,
+          ]}
+        >
+          <View style={styles.fabInner} />
+        </Pressable>
+      </View>
 
-          <RecordingsList
-            recordings={recordings}
-            onRetry={retry}
-            onDelete={remove}
-            onShare={share}
-          />
-        </SafeAreaView>
-      </Modal>
+      <RecordingOverlay
+        isVisible={isActive || isSaving}
+        duration={duration}
+        metering={metering}
+        isRecording={isRecording}
+        isPaused={isPaused}
+        isSaving={isSaving}
+        onPauseResume={handlePauseResume}
+        onStop={stopRecording}
+        onDelete={cancelRecording}
+      />
     </SafeAreaView>
   );
 }
@@ -94,64 +124,103 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#111827",
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    padding: 16,
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
   },
-  settingsButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  searchContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.md,
   },
-  settingsText: {
-    color: "#3b82f6",
-    fontSize: 16,
-    fontWeight: "500",
+  searchIcon: {
+    width: 18,
+    height: 18,
+    position: "relative",
+  },
+  searchCircle: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.textMuted,
+  },
+  searchHandle: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 6,
+    height: 2,
+    backgroundColor: colors.textMuted,
+    borderRadius: 1,
+    transform: [{ rotate: "45deg" }],
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: typography.base,
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuDots: {
+    gap: 4,
+  },
+  menuDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.textSecondary,
+  },
+  statusBar: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   content: {
     flex: 1,
+  },
+  fabContainer: {
+    position: "absolute",
+    bottom: 80,
+    left: 0,
+    right: 0,
     alignItems: "center",
+  },
+  fab: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: colors.backgroundElevated,
     justifyContent: "center",
-  },
-  footer: {
     alignItems: "center",
-    paddingBottom: 32,
-    gap: 12,
+    borderWidth: 6,
+    borderColor: colors.border,
+    ...shadows.md,
   },
-  viewAllButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  fabPressed: {
+    transform: [{ scale: 0.95 }],
+    borderColor: colors.error,
   },
-  viewAllText: {
-    color: "#9ca3af",
-    fontSize: 14,
+  fabDisabled: {
+    opacity: 0.5,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "#111827",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1f2937",
-  },
-  modalTitle: {
-    color: "#f9fafb",
-    fontSize: 20,
-    fontWeight: "600",
-  },
-  closeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  closeText: {
-    color: "#3b82f6",
-    fontSize: 16,
-    fontWeight: "500",
+  fabInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.error,
   },
 });

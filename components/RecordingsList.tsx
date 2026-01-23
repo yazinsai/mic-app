@@ -1,20 +1,37 @@
 import { View, Text, Pressable, FlatList, StyleSheet, Alert } from "react-native";
+import { MiniWaveform } from "./Waveform";
 import type { Recording } from "@/lib/queue";
+import { colors, spacing, typography, radii } from "@/constants/Colors";
 
 interface RecordingsListProps {
   recordings: Recording[];
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
   onShare: (recording: Recording) => void;
+  onPlay?: (recording: Recording) => void;
 }
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
-  return date.toLocaleString(undefined, {
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } else if (diffDays < 7) {
+    return date.toLocaleDateString(undefined, {
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   });
 }
 
@@ -24,27 +41,30 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function getStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    recorded: "Pending upload",
-    uploading: "Uploading...",
-    upload_failed: "Upload failed",
-    uploaded: "Pending transcription",
-    transcribing: "Transcribing...",
-    transcription_failed: "Transcription failed",
-    transcribed: "Pending delivery",
-    sending: "Sending...",
-    send_failed: "Delivery failed",
-    sent: "Completed",
-  };
-  return labels[status] ?? status;
+function getTitle(recording: Recording): string {
+  const date = new Date(recording.createdAt);
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-function getStatusColor(status: string): string {
-  if (status.includes("failed")) return "#ef4444";
-  if (status === "sent") return "#22c55e";
-  if (status.includes("ing")) return "#3b82f6";
-  return "#9ca3af";
+function getStatusInfo(status: string): { label: string; color: string } | null {
+  if (status === "sent") return null;
+
+  const statusMap: Record<string, { label: string; color: string }> = {
+    recorded: { label: "Pending", color: colors.textTertiary },
+    uploading: { label: "Uploading", color: colors.primary },
+    upload_failed: { label: "Upload failed", color: colors.error },
+    uploaded: { label: "Processing", color: colors.primary },
+    transcribing: { label: "Transcribing", color: colors.primary },
+    transcription_failed: { label: "Failed", color: colors.error },
+    transcribed: { label: "Sending", color: colors.primary },
+    sending: { label: "Sending", color: colors.primary },
+    send_failed: { label: "Send failed", color: colors.error },
+  };
+  return statusMap[status] ?? null;
 }
 
 function RecordingItem({
@@ -52,84 +72,97 @@ function RecordingItem({
   onRetry,
   onDelete,
   onShare,
+  onPlay,
 }: {
   recording: Recording;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
   onShare: (recording: Recording) => void;
+  onPlay?: (recording: Recording) => void;
 }) {
   const isFailed = recording.status.includes("failed");
+  const statusInfo = getStatusInfo(recording.status);
+  const waveformSeed = recording.createdAt;
 
-  const handleDelete = () => {
+  const handleLongPress = () => {
     Alert.alert(
-      "Delete Recording",
-      "Are you sure you want to delete this recording? This cannot be undone.",
+      "Recording Options",
+      recording.transcription
+        ? `"${recording.transcription.slice(0, 100)}${recording.transcription.length > 100 ? "..." : ""}"`
+        : undefined,
       [
-        { text: "Cancel", style: "cancel" },
+        ...(isFailed
+          ? [{ text: "Retry", onPress: () => onRetry(recording.id) }]
+          : []),
+        { text: "Export", onPress: () => onShare(recording) },
         {
           text: "Delete",
-          style: "destructive",
-          onPress: () => onDelete(recording.id),
+          style: "destructive" as const,
+          onPress: () => {
+            Alert.alert(
+              "Delete Recording",
+              "Are you sure? This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => onDelete(recording.id),
+                },
+              ]
+            );
+          },
         },
+        { text: "Cancel", style: "cancel" as const },
       ]
     );
   };
 
   return (
-    <View style={styles.item}>
-      <View style={styles.itemHeader}>
-        <Text style={styles.itemDate}>{formatDate(recording.createdAt)}</Text>
-        <Text style={styles.itemDuration}>
-          {formatDuration(recording.duration)}
-        </Text>
-      </View>
-
-      <View style={styles.itemStatus}>
-        <View
-          style={[
-            styles.statusDot,
-            { backgroundColor: getStatusColor(recording.status) },
-          ]}
-        />
-        <Text style={styles.statusText}>{getStatusLabel(recording.status)}</Text>
-      </View>
-
-      {recording.errorMessage && (
-        <Text style={styles.errorText} numberOfLines={2}>
-          {recording.errorMessage}
-        </Text>
-      )}
-
-      {recording.transcription && (
-        <Text style={styles.transcriptionText} numberOfLines={2}>
-          {recording.transcription}
-        </Text>
-      )}
-
-      <View style={styles.actions}>
-        {isFailed && (
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => onRetry(recording.id)}
-          >
-            <Text style={styles.actionButtonText}>Retry</Text>
-          </Pressable>
-        )}
-
-        <Pressable style={styles.actionButton} onPress={() => onShare(recording)}>
-          <Text style={styles.actionButtonText}>Export</Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={handleDelete}
-        >
-          <Text style={[styles.actionButtonText, styles.deleteButtonText]}>
-            Delete
+    <Pressable
+      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+      onPress={() => onPlay?.(recording)}
+      onLongPress={handleLongPress}
+    >
+      <View style={styles.itemContent}>
+        <View style={styles.itemInfo}>
+          <Text style={styles.itemTitle} numberOfLines={1}>
+            {getTitle(recording)}
           </Text>
-        </Pressable>
+          <View style={styles.itemMeta}>
+            <Text style={styles.itemDate}>{formatDate(recording.createdAt)}</Text>
+            {statusInfo && (
+              <>
+                <Text style={styles.metaDot}>•</Text>
+                <Text style={[styles.itemStatus, { color: statusInfo.color }]}>
+                  {statusInfo.label}
+                </Text>
+              </>
+            )}
+          </View>
+          <View style={styles.waveformRow}>
+            <MiniWaveform
+              seed={waveformSeed}
+              width={120}
+              height={20}
+              color={colors.primary}
+            />
+          </View>
+        </View>
+
+        <View style={styles.itemRight}>
+          <Pressable
+            style={styles.playButton}
+            onPress={() => onPlay?.(recording)}
+          >
+            <View style={styles.playIcon} />
+          </Pressable>
+          <Text style={styles.itemDuration}>
+            {formatDuration(recording.duration)}
+          </Text>
+        </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -138,11 +171,15 @@ export function RecordingsList({
   onRetry,
   onDelete,
   onShare,
+  onPlay,
 }: RecordingsListProps) {
   if (recordings.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>No recordings yet</Text>
+        <Text style={styles.emptyTitle}>No recordings yet</Text>
+        <Text style={styles.emptySubtitle}>
+          Tap the record button to get started
+        </Text>
       </View>
     );
   }
@@ -157,6 +194,7 @@ export function RecordingsList({
           onRetry={onRetry}
           onDelete={onDelete}
           onShare={onShare}
+          onPlay={onPlay}
         />
       )}
       contentContainerStyle={styles.list}
@@ -167,88 +205,97 @@ export function RecordingsList({
 
 const styles = StyleSheet.create({
   list: {
-    padding: 16,
-    gap: 12,
+    paddingBottom: 120,
   },
   empty: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
+    padding: spacing.xxl,
+    paddingBottom: 120,
   },
-  emptyText: {
-    color: "#6b7280",
-    fontSize: 16,
+  emptyTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.lg,
+    fontWeight: typography.medium,
+    marginBottom: spacing.sm,
+  },
+  emptySubtitle: {
+    color: colors.textTertiary,
+    fontSize: typography.base,
+    textAlign: "center",
   },
   item: {
-    backgroundColor: "#1f2937",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.backgroundElevated,
   },
-  itemHeader: {
+  itemPressed: {
+    backgroundColor: colors.backgroundElevated,
+  },
+  itemContent: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+  },
+  itemInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  itemTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.md,
+    fontWeight: typography.medium,
+    marginBottom: 2,
+  },
+  itemMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
   },
   itemDate: {
-    color: "#f9fafb",
-    fontSize: 15,
-    fontWeight: "600",
+    color: colors.textTertiary,
+    fontSize: typography.sm,
   },
-  itemDuration: {
-    color: "#9ca3af",
-    fontSize: 14,
-    fontVariant: ["tabular-nums"],
+  metaDot: {
+    color: colors.textMuted,
+    fontSize: typography.sm,
+    marginHorizontal: spacing.sm,
   },
   itemStatus: {
+    fontSize: typography.sm,
+    fontWeight: typography.medium,
+  },
+  waveformRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  itemRight: {
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  statusText: {
-    color: "#9ca3af",
-    fontSize: 13,
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  errorText: {
-    color: "#f87171",
-    fontSize: 12,
-    marginTop: 8,
+  playIcon: {
+    width: 0,
+    height: 0,
+    marginLeft: 3,
+    borderLeftWidth: 12,
+    borderTopWidth: 7,
+    borderBottomWidth: 7,
+    borderLeftColor: colors.white,
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
   },
-  transcriptionText: {
-    color: "#d1d5db",
-    fontSize: 13,
-    marginTop: 8,
-    fontStyle: "italic",
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-  },
-  actionButton: {
-    backgroundColor: "#374151",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  actionButtonText: {
-    color: "#f9fafb",
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  deleteButton: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#ef4444",
-  },
-  deleteButtonText: {
-    color: "#ef4444",
+  itemDuration: {
+    color: colors.textTertiary,
+    fontSize: typography.sm,
+    fontVariant: ["tabular-nums"],
   },
 });
