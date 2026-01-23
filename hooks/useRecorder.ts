@@ -137,14 +137,17 @@ export function useRecorder(onRecordingComplete?: () => void) {
     }
 
     try {
+      // Get duration BEFORE stopping
       const status = await recording.getStatusAsync();
+      const actualDuration = status.durationMillis ? status.durationMillis / 1000 : duration;
+
       if (status.canRecord) {
         await recording.stopAndUnloadAsync();
       }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
 
       const recordingId = id();
-      const { filePath, duration: actualDuration } = await saveRecordingLocally(
+      const { filePath } = await saveRecordingLocally(
         recording,
         recordingId
       );

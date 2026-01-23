@@ -120,17 +120,6 @@ export function RecordingOverlay({
       </View>
 
       <View style={styles.bottomSection}>
-        <View style={styles.audioBadge}>
-          <View style={styles.audioBadgeIcon}>
-            <View style={styles.soundBars}>
-              <View style={[styles.soundBar, styles.soundBar1]} />
-              <View style={[styles.soundBar, styles.soundBar2]} />
-              <View style={[styles.soundBar, styles.soundBar3]} />
-            </View>
-          </View>
-          <Text style={styles.audioBadgeText}>Audio</Text>
-        </View>
-
         <View style={styles.durationContainer}>
           <Animated.View style={[styles.recordingDot, dotAnimatedStyle]} />
           <Text style={styles.durationText}>{formatDuration(duration)}</Text>
@@ -147,26 +136,30 @@ export function RecordingOverlay({
             </Text>
           </Pressable>
 
-          <Pressable
-            onPress={handlePauseResume}
-            disabled={isSaving}
-            style={({ pressed }) => [
-              styles.mainButton,
-              pressed && styles.buttonPressed,
-              isSaving && styles.buttonDisabled,
-            ]}
-          >
-            {isSaving ? (
-              <ActivityIndicator color={colors.white} size="large" />
-            ) : isPaused ? (
-              <View style={styles.playIcon} />
-            ) : (
-              <View style={styles.pauseIcon}>
-                <View style={styles.pauseBar} />
-                <View style={styles.pauseBar} />
+          <View style={styles.mainButtonContainer}>
+            <Pressable
+              onPress={handlePauseResume}
+              disabled={isSaving}
+              style={({ pressed }) => [
+                styles.mainButton,
+                pressed && styles.buttonPressed,
+                isSaving && styles.buttonDisabled,
+              ]}
+            >
+              <View style={styles.mainButtonInner}>
+                {isSaving ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : isPaused ? (
+                  <View style={styles.playIcon} />
+                ) : (
+                  <View style={styles.pauseIcon}>
+                    <View style={styles.pauseBar} />
+                    <View style={styles.pauseBar} />
+                  </View>
+                )}
               </View>
-            )}
-          </Pressable>
+            </Pressable>
+          </View>
 
           <Pressable
             onPress={handleStop}
@@ -261,24 +254,24 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   recordingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: colors.error,
   },
   durationText: {
     color: colors.textPrimary,
-    fontSize: typography.lg,
+    fontSize: 32,
     fontWeight: typography.medium,
     fontVariant: ["tabular-nums"],
   },
   controls: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xl,
+    justifyContent: "space-between",
     marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    width: "100%",
   },
   textButton: {
     width: 80,
@@ -295,10 +288,24 @@ const styles = StyleSheet.create({
   doneLabel: {
     color: colors.primary,
   },
+  mainButtonContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   mainButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: colors.backgroundElevated,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 6,
+    borderColor: colors.borderLight,
+  },
+  mainButtonInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.error,
     justifyContent: "center",
     alignItems: "center",
@@ -316,17 +323,17 @@ const styles = StyleSheet.create({
   },
   pauseBar: {
     width: 8,
-    height: 32,
+    height: 28,
     backgroundColor: colors.white,
     borderRadius: 3,
   },
   playIcon: {
     width: 0,
     height: 0,
-    marginLeft: 6,
-    borderLeftWidth: 28,
-    borderTopWidth: 18,
-    borderBottomWidth: 18,
+    marginLeft: 5,
+    borderLeftWidth: 24,
+    borderTopWidth: 15,
+    borderBottomWidth: 15,
     borderLeftColor: colors.white,
     borderTopColor: "transparent",
     borderBottomColor: "transparent",

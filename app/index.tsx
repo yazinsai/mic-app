@@ -58,21 +58,18 @@ export default function HomeScreen() {
 
   const handlePlay = async (recording: Recording) => {
     try {
-      // If same recording, toggle pause/play
+      // If same recording is playing, stop it
       if (playingId === recording.id && soundRef.current) {
-        const status = await soundRef.current.getStatusAsync();
-        if (status.isLoaded) {
-          if (status.isPlaying) {
-            await soundRef.current.pauseAsync();
-          } else {
-            await soundRef.current.playAsync();
-          }
-          return;
-        }
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+        setPlayingId(null);
+        return;
       }
 
       // Stop any existing playback
       if (soundRef.current) {
+        await soundRef.current.stopAsync();
         await soundRef.current.unloadAsync();
         soundRef.current = null;
         setPlayingId(null);
@@ -256,13 +253,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   fab: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
     backgroundColor: colors.backgroundElevated,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 5,
+    borderWidth: 6,
     borderColor: colors.borderLight,
     ...shadows.md,
   },
@@ -274,9 +271,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   fabInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.error,
   },
 });
