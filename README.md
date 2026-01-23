@@ -7,6 +7,26 @@ mic-app is a minimal voice‑notes app and the first step in a workflow where Cl
 - Push schema changes: `npx instant-cli push`
 - Pull schema changes: `npx instant-cli pull`
 
+## First-time setup
+1) Install deps:
+```
+npm install
+```
+
+2) Initialize InstantDB for this project:
+```
+npx instant-cli init
+```
+
+3) Create a `.env` file from the example and fill in the values:
+```
+cp .env.example .env
+```
+
+Required env vars:
+- `EXPO_PUBLIC_INSTANT_APP_ID` (InstantDB app id)
+- `EXPO_PUBLIC_GROQ_API_KEY` (Groq API key for transcription)
+
 ## Build an Android APK (EAS)
 This project uses Expo Application Services (EAS) to build APKs in the cloud.
 
@@ -50,7 +70,5 @@ Notes:
 
 ## App configuration
 Icons, splash, and adaptive icons live in `assets/images/` and are referenced from `app.json`.
-
-Got any feedback or questions? Join our [Discord](https://discord.gg/hgVf9R6SBm)
 
 Got any feedback or questions? Join our [Discord](https://discord.gg/hgVf9R6SBm)
