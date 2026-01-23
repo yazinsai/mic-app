@@ -4,8 +4,15 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
+import { ShareIntentProvider } from "expo-share-intent";
 
 import { colors } from "@/constants/Colors";
+import { useShareIntent } from "@/hooks/useShareIntent";
+
+function ShareIntentHandler() {
+  useShareIntent();
+  return null;
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -17,26 +24,29 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={DarkTheme}>
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.textPrimary,
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="settings"
-          options={{
-            headerShown: true,
-            headerTitle: "Settings",
-            presentation: "modal",
+    <ShareIntentProvider>
+      <ThemeProvider value={DarkTheme}>
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.textPrimary,
+            contentStyle: { backgroundColor: colors.background },
           }}
-        />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="light" />
-    </ThemeProvider>
+        >
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="settings"
+            options={{
+              headerShown: true,
+              headerTitle: "Settings",
+              presentation: "modal",
+            }}
+          />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <ShareIntentHandler />
+        <StatusBar style="light" />
+      </ThemeProvider>
+    </ShareIntentProvider>
   );
 }

@@ -1,10 +1,10 @@
 import type { InstaQLEntity } from "@instantdb/react-native";
 import type { AppSchema } from "@/instant.schema";
 import { db } from "./db";
-import { uploadToStorage } from "./storage";
+import { uploadToStorage, FileTooLargeError } from "./storage";
 import { transcribeAudio } from "./transcription";
 import { sendWebhook, type WebhookPayload } from "./webhook";
-import { getLocalFileInfo } from "./audio";
+import { getLocalFileInfo, getFileSize, MAX_TRANSCRIPTION_SIZE } from "./audio";
 
 export type Recording = InstaQLEntity<AppSchema, "recordings", { audioFile: {} }>;
 
@@ -118,6 +118,12 @@ async function handleUpload(id: string, localFilePath: string): Promise<void> {
     await uploadToStorage(localFilePath, id);
     await updateStatus(id, "uploaded");
   } catch (error) {
+    if (error instanceof FileTooLargeError) {
+      // Skip upload for large files but continue processing
+      console.warn(`Skipping cloud upload for ${id}: ${error.message}`);
+      await updateStatus(id, "uploaded");
+      return;
+    }
     await updateStatus(id, "upload_failed", getErrorMessage(error));
   }
 }
@@ -132,6 +138,16 @@ async function handleTranscription(
     const fileInfo = await getLocalFileInfo(localFilePath);
     if (!fileInfo.exists) {
       throw new Error("Local file not found for transcription");
+    }
+
+    // Check file size before attempting transcription
+    const fileSize = await getFileSize(localFilePath);
+    if (fileSize > MAX_TRANSCRIPTION_SIZE) {
+      const sizeMB = Math.round(fileSize / 1024 / 1024);
+      const limitMB = Math.round(MAX_TRANSCRIPTION_SIZE / 1024 / 1024);
+      throw new Error(
+        `File too large for transcription (${sizeMB}MB > ${limitMB}MB limit)`
+      );
     }
 
     const transcription = await transcribeAudio(localFilePath);

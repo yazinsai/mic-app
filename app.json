@@ -36,6 +36,15 @@
           "resizeMode": "contain",
           "backgroundColor": "#0B0B0C"
         }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsFileWithMaxCount": 1
+          },
+          "androidIntentFilters": ["audio/*"]
+        }
       ]
     ],
     "experiments": {
