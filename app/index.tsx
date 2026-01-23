@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { View, StyleSheet, SafeAreaView, Pressable, Alert } from "react-native";
+import { View, StyleSheet, Pressable, Alert } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
 import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
