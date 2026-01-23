@@ -158,6 +158,66 @@ export interface ImportResult {
   exceedsTranscriptionLimit: boolean;
 }
 
+/**
+ * Try to extract a timestamp from the filename.
+ * Common patterns:
+ * - Recording_20241215_143052.m4a (Samsung voice recorder)
+ * - VN_20241215_143052.m4a (some voice note apps)
+ * - 2024-12-15_14-30-52.m4a
+ * - 20241215143052.m4a
+ * - audio_2024_12_15_14_30_52.m4a
+ */
+function extractDateFromFilename(filename: string): number | null {
+  // Remove extension and path
+  const basename = filename.split("/").pop()?.replace(/\.\w+$/, "") ?? "";
+
+  // Pattern 1: YYYYMMDD_HHMMSS or YYYYMMDD-HHMMSS (e.g., Recording_20241215_143052)
+  const pattern1 = basename.match(/(\d{4})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})/);
+  if (pattern1) {
+    const [, year, month, day, hour, min, sec] = pattern1;
+    const date = new Date(
+      parseInt(year),
+      parseInt(month) - 1,
+      parseInt(day),
+      parseInt(hour),
+      parseInt(min),
+      parseInt(sec)
+    );
+    if (!isNaN(date.getTime())) return date.getTime();
+  }
+
+  // Pattern 2: YYYY-MM-DD_HH-MM-SS or YYYY_MM_DD_HH_MM_SS
+  const pattern2 = basename.match(/(\d{4})[_-](\d{2})[_-](\d{2})[_-](\d{2})[_-](\d{2})[_-](\d{2})/);
+  if (pattern2) {
+    const [, year, month, day, hour, min, sec] = pattern2;
+    const date = new Date(
+      parseInt(year),
+      parseInt(month) - 1,
+      parseInt(day),
+      parseInt(hour),
+      parseInt(min),
+      parseInt(sec)
+    );
+    if (!isNaN(date.getTime())) return date.getTime();
+  }
+
+  // Pattern 3: Just YYYYMMDDHHMMSS (14 digits)
+  const pattern3 = basename.match(/(\d{14})/);
+  if (pattern3) {
+    const digits = pattern3[1];
+    const year = parseInt(digits.slice(0, 4));
+    const month = parseInt(digits.slice(4, 6)) - 1;
+    const day = parseInt(digits.slice(6, 8));
+    const hour = parseInt(digits.slice(8, 10));
+    const min = parseInt(digits.slice(10, 12));
+    const sec = parseInt(digits.slice(12, 14));
+    const date = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(date.getTime()) && year >= 2000 && year <= 2100) return date.getTime();
+  }
+
+  return null;
+}
+
 export async function importSharedAudio(
   sourceUri: string,
   recordingId: string
@@ -169,9 +229,20 @@ export async function importSharedAudio(
   if (!sourceInfo.exists) {
     throw new Error("Source audio file not found");
   }
-  // Use file's modification time, fallback to now
+
+  // Try to extract date from filename first (most reliable for shared files)
+  // Then fall back to file modification time, then current time
+  const filenameDate = extractDateFromFilename(sourceUri);
   const modTime = sourceInfo.modificationTime ?? Math.floor(Date.now() / 1000);
-  const createdAt = modTime * 1000; // Convert seconds to ms
+  const modTimeMs = modTime * 1000;
+
+  // Use filename date if found and it's reasonable (not in the future, not too old)
+  const now = Date.now();
+  const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60 * 1000;
+  const createdAt =
+    filenameDate && filenameDate <= now && filenameDate >= tenYearsAgo
+      ? filenameDate
+      : modTimeMs;
 
   // Generate fingerprint for deduplication (size:modTime)
   const sourceFingerprint = `${sourceInfo.size ?? 0}:${modTime}`;

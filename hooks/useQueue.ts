@@ -46,6 +46,27 @@ export function useQueue() {
     processingRef.current = true;
     processQueue(webhookUrl, isOnline).finally(() => {
       processingRef.current = false;
+      // Re-check for pending items that may have been added during processing
+      // Use setTimeout to allow React state to update before re-checking
+      setTimeout(() => {
+        if (!processingRef.current && isOnline) {
+          // Query directly to check for pending items
+          db.queryOnce({
+            recordings: {
+              $: {
+                where: {
+                  or: PENDING_STATUSES.map((s) => ({ status: s })),
+                },
+                limit: 1,
+              },
+            },
+          }).then((result) => {
+            if (result.data.recordings.length > 0) {
+              triggerProcessing();
+            }
+          });
+        }
+      }, 100);
     });
   }, [webhookUrl, isOnline]);
 
