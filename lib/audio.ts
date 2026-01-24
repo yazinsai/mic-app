@@ -166,6 +166,7 @@ export interface ImportResult {
  * - 2024-12-15_14-30-52.m4a
  * - 20241215143052.m4a
  * - audio_2024_12_15_14_30_52.m4a
+ * - Jan 6 at 5-16 AM.m4a (Google Voice Recorder)
  */
 function extractDateFromFilename(filename: string): number | null {
   // Remove extension and path
@@ -213,6 +214,38 @@ function extractDateFromFilename(filename: string): number | null {
     const sec = parseInt(digits.slice(12, 14));
     const date = new Date(year, month, day, hour, min, sec);
     if (!isNaN(date.getTime()) && year >= 2000 && year <= 2100) return date.getTime();
+  }
+
+  // Pattern 4: Google Voice Recorder - "Jan 6 at 5-16 AM" or "Dec 25 at 10-05 PM"
+  const monthMap: Record<string, number> = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+  const pattern4 = basename.match(/^([A-Za-z]{3})\s+(\d{1,2})\s+at\s+(\d{1,2})-(\d{2})\s*(AM|PM)$/i);
+  if (pattern4) {
+    const [, monthStr, dayStr, hourStr, minStr, ampm] = pattern4;
+    const monthIndex = monthMap[monthStr.toLowerCase()];
+    if (monthIndex !== undefined) {
+      let hour = parseInt(hourStr);
+      const min = parseInt(minStr);
+      const day = parseInt(dayStr);
+
+      // Convert 12-hour to 24-hour format
+      if (ampm.toUpperCase() === "PM" && hour !== 12) {
+        hour += 12;
+      } else if (ampm.toUpperCase() === "AM" && hour === 12) {
+        hour = 0;
+      }
+
+      // Guess the year: if January, assume current year; otherwise previous year
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const year = monthIndex === 0 && currentMonth === 0 ? currentYear : currentYear - (monthIndex > currentMonth ? 1 : 0);
+
+      const date = new Date(year, monthIndex, day, hour, min, 0);
+      if (!isNaN(date.getTime())) return date.getTime();
+    }
   }
 
   return null;

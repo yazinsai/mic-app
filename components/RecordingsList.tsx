@@ -275,18 +275,17 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     backgroundColor: colors.background,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.md,
     marginHorizontal: -spacing.lg,
     paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   sectionHeaderText: {
     color: colors.textSecondary,
-    fontSize: typography.sm,
+    fontSize: typography.xs,
     fontWeight: typography.semibold,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   empty: {
     flex: 1,
@@ -307,13 +306,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   item: {
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radii.md,
   },
   itemSeparator: {
-    height: spacing.md,
+    height: spacing.sm,
   },
   itemPressed: {
-    backgroundColor: colors.backgroundElevated,
+    opacity: 0.7,
   },
   itemContent: {
     flexDirection: "row",
