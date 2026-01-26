@@ -7,7 +7,7 @@ import { generateTitle } from "./titleGeneration";
 import { sendWebhook, type WebhookPayload } from "./webhook";
 import { getLocalFileInfo, getFileSize, MAX_TRANSCRIPTION_SIZE } from "./audio";
 
-export type Recording = InstaQLEntity<AppSchema, "recordings", { audioFile: {} }>;
+export type Recording = InstaQLEntity<AppSchema, "recordings", { audioFile: {}; actions: {} }>;
 
 export type RecordingStatus =
   | "recorded"

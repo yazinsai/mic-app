@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
@@ -8,12 +8,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { RecordingOverlay } from "@/components/RecordingOverlay";
 import { QueueStatus } from "@/components/QueueStatus";
 import { RecordingsList } from "@/components/RecordingsList";
+import { ActionsScreen } from "@/components/ActionsScreen";
+import { BottomNavBar } from "@/components/BottomNavBar";
 import { useQueue } from "@/hooks/useQueue";
 import { useRecorder } from "@/hooks/useRecorder";
 import type { Recording } from "@/lib/queue";
-import { colors, spacing, shadows } from "@/constants/Colors";
+import type { Action } from "@/components/ActionItem";
+import { colors, spacing } from "@/constants/Colors";
+
+type TabKey = "actions" | "recordings";
 
 export default function HomeScreen() {
+  const [activeTab, setActiveTab] = useState<TabKey>("actions");
+
   const {
     recordings,
     pendingCount,
@@ -40,6 +47,18 @@ export default function HomeScreen() {
   } = useRecorder(() => {
     triggerProcessing();
   });
+
+  // Collect all actions from all recordings
+  const allActions = useMemo(() => {
+    const actions: Action[] = [];
+    for (const recording of recordings) {
+      if (recording.actions) {
+        actions.push(...recording.actions);
+      }
+    }
+    // Sort by extractedAt descending (newest first)
+    return actions.sort((a, b) => b.extractedAt - a.extractedAt);
+  }, [recordings]);
 
   const handleStartRecording = async () => {
     if (hasPermission === false) return;
@@ -114,10 +133,12 @@ export default function HomeScreen() {
     }
   };
 
+  const headerTitle = activeTab === "actions" ? "Actions" : "Recordings";
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Recordings</Text>
+        <Text style={styles.headerTitle}>{headerTitle}</Text>
         <View style={styles.headerRight}>
           {(pendingCount > 0 || failedCount > 0) && (
             <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
@@ -131,31 +152,28 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.content}>
-        <RecordingsList
-          recordings={recordings}
-          onRetry={retry}
-          onDelete={remove}
-          onShare={share}
-          onPlay={handlePlay}
-          playingId={playingId}
-          playbackRate={playbackRate}
-          onCyclePlaybackRate={cyclePlaybackRate}
-        />
+        {activeTab === "actions" ? (
+          <ActionsScreen actions={allActions} />
+        ) : (
+          <RecordingsList
+            recordings={recordings}
+            onRetry={retry}
+            onDelete={remove}
+            onShare={share}
+            onPlay={handlePlay}
+            playingId={playingId}
+            playbackRate={playbackRate}
+            onCyclePlaybackRate={cyclePlaybackRate}
+          />
+        )}
       </View>
 
-      <View style={styles.fabContainer}>
-        <Pressable
-          onPress={handleStartRecording}
-          disabled={hasPermission === false}
-          style={({ pressed }) => [
-            styles.fab,
-            pressed && styles.fabPressed,
-            hasPermission === false && styles.fabDisabled,
-          ]}
-        >
-          <Ionicons name="mic" size={56} color={colors.white} />
-        </Pressable>
-      </View>
+      <BottomNavBar
+        activeTab={activeTab}
+        onTabPress={setActiveTab}
+        onRecordPress={handleStartRecording}
+        recordDisabled={hasPermission === false}
+      />
 
       <RecordingOverlay
         isVisible={isActive || isSaving}
@@ -197,29 +215,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  fabContainer: {
-    position: "absolute",
-    bottom: 40,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  fab: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: colors.error,
-    justifyContent: "center",
-    alignItems: "center",
-    ...shadows.md,
-  },
-  fabPressed: {
-    transform: [{ scale: 0.95 }],
-    opacity: 0.9,
-  },
-  fabDisabled: {
-    opacity: 0.5,
   },
   settingsButton: {
     width: 44,

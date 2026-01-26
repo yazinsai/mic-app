@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable, SectionList, StyleSheet, Alert } from "react-native";
 import { DeleteConfirmationOverlay } from "./DeleteConfirmationOverlay";
+import { ActionsList } from "./ActionsList";
 import type { Recording } from "@/lib/queue";
 import { colors, spacing, typography, radii } from "@/constants/Colors";
 
@@ -47,8 +48,17 @@ function getTime(recording: Recording): string {
   });
 }
 
-function getStatusInfo(status: string): { label: string; color: string } | null {
-  if (status === "sent") return null;
+function getStatusInfo(status: string, processingStatus?: string | null): { label: string; color: string } | null {
+  if (status === "sent" && !processingStatus) return null;
+  if (status === "sent" && processingStatus === "processed") return null;
+
+  // Show processing status if available
+  if (processingStatus === "processing") {
+    return { label: "Extracting actions...", color: colors.primary };
+  }
+  if (processingStatus === "failed") {
+    return { label: "Processing failed", color: colors.error };
+  }
 
   const statusMap: Record<string, { label: string; color: string }> = {
     recorded: { label: "Pending", color: colors.textTertiary },
@@ -84,8 +94,9 @@ function RecordingItem({
   onCyclePlaybackRate?: () => void;
 }) {
   const isFailed = recording.status.includes("failed");
-  const statusInfo = getStatusInfo(recording.status);
+  const statusInfo = getStatusInfo(recording.status, recording.processingStatus);
   const isRetryable = recording.status !== "sent";
+  const actions = recording.actions ?? [];
 
   const handleLongPress = () => {
     Alert.alert(
@@ -152,6 +163,9 @@ function RecordingItem({
           {statusInfo.label === "Uploading" && (
             <Text style={styles.statusIcon}>↑</Text>
           )}
+          {statusInfo.label === "Extracting actions..." && (
+            <Text style={styles.statusIcon}>⟳</Text>
+          )}
           <Text style={[styles.itemStatus, { color: statusInfo.color }]}>
             {statusInfo.label}
           </Text>
@@ -161,6 +175,9 @@ function RecordingItem({
           {recording.transcription}
         </Text>
       ) : null}
+
+      {/* Actions */}
+      {actions.length > 0 && <ActionsList actions={actions} />}
     </Pressable>
   );
 }

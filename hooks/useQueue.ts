@@ -24,6 +24,7 @@ export function useQueue() {
     recordings: {
       $: { order: { createdAt: "desc" } },
       audioFile: {},
+      actions: {},
     },
   });
 

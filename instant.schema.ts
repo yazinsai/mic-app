@@ -38,6 +38,25 @@ const _schema = i.schema({
 
       // Webhook tracking
       lastAttemptAt: i.number().optional(),
+
+      // Mac listener processing
+      processingStatus: i.string().indexed().optional(), // "processing" | "processed" | "failed"
+      processingStartedAt: i.number().optional(),
+      processingCompletedAt: i.number().optional(),
+      processingError: i.string().optional(),
+    }),
+    actions: i.entity({
+      type: i.string().indexed(), // "bug" | "feature" | "todo" | "note" | "question" | "command"
+      title: i.string(),
+      description: i.string().optional(),
+      status: i.string().indexed(), // "pending" | "in_progress" | "completed" | "failed"
+      extractedAt: i.number().indexed(),
+      startedAt: i.number().optional(),
+      completedAt: i.number().optional(),
+      result: i.string().optional(),
+      errorMessage: i.string().optional(),
+      syncToken: i.string().unique().indexed(), // Idempotency: `${recordingId}:${index}`
+      projectPath: i.string().indexed().optional(),
     }),
   },
   rooms: {},
@@ -65,6 +84,19 @@ const _schema = i.schema({
         on: "$files",
         has: "one",
         label: "recording",
+      },
+    },
+    recordingActions: {
+      forward: {
+        on: "actions",
+        has: "one",
+        label: "recording",
+        onDelete: "cascade",
+      },
+      reverse: {
+        on: "recordings",
+        has: "many",
+        label: "actions",
       },
     },
   },
