@@ -153,7 +153,7 @@ export default function HomeScreen() {
             hasPermission === false && styles.fabDisabled,
           ]}
         >
-          <Ionicons name="mic" size={32} color={colors.white} />
+          <Ionicons name="mic" size={56} color={colors.white} />
         </Pressable>
       </View>
 
@@ -206,9 +206,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   fab: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     backgroundColor: colors.error,
     justifyContent: "center",
     alignItems: "center",
