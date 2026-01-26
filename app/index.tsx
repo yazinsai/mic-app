@@ -10,6 +10,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
@@ -276,6 +277,18 @@ export default function HomeScreen() {
               {selectedAction.description && (
                 <Text style={styles.modalDescription}>{selectedAction.description}</Text>
               )}
+
+              {/* Open App Button */}
+              {selectedAction.deployUrl && (
+                <Pressable
+                  style={({ pressed }) => [styles.openAppButton, pressed && styles.buttonPressed]}
+                  onPress={() => Linking.openURL(selectedAction.deployUrl!)}
+                >
+                  <Ionicons name="open-outline" size={18} color={colors.background} />
+                  <Text style={styles.openAppButtonText}>Open App</Text>
+                </Pressable>
+              )}
+
               {selectedAction.errorMessage && (
                 <View style={styles.errorBox}>
                   <Ionicons name="alert-circle" size={18} color={colors.error} />
@@ -426,6 +439,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: typography.base * 1.5,
     marginBottom: spacing.lg,
+  },
+  openAppButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.success,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
+    marginBottom: spacing.lg,
+  },
+  openAppButtonText: {
+    color: colors.background,
+    fontSize: typography.base,
+    fontWeight: "600",
   },
   resultBox: {
     flexDirection: "row",

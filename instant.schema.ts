@@ -60,6 +60,9 @@ const _schema = i.schema({
 
       // Thread messages: JSON array of {role: "user"|"assistant", content: string, timestamp: number}
       messages: i.string().optional(),
+
+      // URL to deployed app (e.g., dokku deployment)
+      deployUrl: i.string().optional(),
     }),
   },
   rooms: {},

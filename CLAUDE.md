@@ -418,8 +418,12 @@ The action entity in InstantDB has:
 - `result`: Output/notes from processing (visible in UI)
 - `messages`: JSON array of thread messages (see above)
 - `errorMessage`: If something went wrong
+- `deployUrl`: URL to deployed app (shows "Open App" button in UI)
 
 Update these fields as you work to surface progress in the UI.
+
+**Deploying to dokku:**
+When deploying an idea/feature to the dokku-server, set the `deployUrl` field with the deployed URL (e.g., `http://ip:port`). The UI will show an "Open App" button that opens the URL for testing.
 
 # Final Note
 
