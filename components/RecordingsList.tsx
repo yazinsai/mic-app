@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { View, Text, Pressable, SectionList, StyleSheet, Alert } from "react-native";
-import { MiniWaveform } from "./Waveform";
 import { DeleteConfirmationOverlay } from "./DeleteConfirmationOverlay";
 import type { Recording } from "@/lib/queue";
 import { colors, spacing, typography, radii } from "@/constants/Colors";
@@ -23,6 +22,24 @@ function formatDuration(seconds: number): string {
 }
 
 function getTitle(recording: Recording): string {
+  // Use AI-generated title if available
+  if (recording.title) {
+    return recording.title;
+  }
+  // Fall back to first few words of transcription
+  if (recording.transcription) {
+    const words = recording.transcription.trim().split(/\s+/).slice(0, 4).join(" ");
+    return words.length > 30 ? words.slice(0, 30) + "..." : words;
+  }
+  // Fall back to time
+  const date = new Date(recording.createdAt);
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getTime(recording: Recording): string {
   const date = new Date(recording.createdAt);
   return date.toLocaleTimeString(undefined, {
     hour: "numeric",
@@ -68,7 +85,7 @@ function RecordingItem({
 }) {
   const isFailed = recording.status.includes("failed");
   const statusInfo = getStatusInfo(recording.status);
-  const waveformSeed = recording.createdAt;
+  const isRetryable = recording.status !== "sent";
 
   const handleLongPress = () => {
     Alert.alert(
@@ -77,8 +94,13 @@ function RecordingItem({
         ? `"${recording.transcription.slice(0, 100)}${recording.transcription.length > 100 ? "..." : ""}"`
         : undefined,
       [
-        ...(isFailed
-          ? [{ text: "Retry", onPress: () => onRetry(recording.id) }]
+        ...(isRetryable
+          ? [
+              {
+                text: isFailed ? "Retry" : "Reprocess",
+                onPress: () => onRetry(recording.id),
+              },
+            ]
           : []),
         { text: "Export", onPress: () => onShare(recording) },
         {
@@ -97,46 +119,12 @@ function RecordingItem({
       onPress={() => onPlay?.(recording)}
       onLongPress={handleLongPress}
     >
-      <View style={styles.itemContent}>
-        <View style={styles.itemInfo}>
-          <Text style={styles.itemTitle} numberOfLines={1}>
-            {getTitle(recording)}
-          </Text>
-          {statusInfo && (
-            <View style={styles.itemMeta}>
-              <Text style={[styles.itemStatus, { color: statusInfo.color }]}>
-                {statusInfo.label}
-              </Text>
-            </View>
-          )}
-          <View style={styles.waveformRow}>
-            {recording.transcription ? (
-              <Text style={styles.transcriptSnippet} numberOfLines={2}>
-                {recording.transcription}
-              </Text>
-            ) : (
-              <MiniWaveform
-                seed={waveformSeed}
-                width={120}
-                height={20}
-                color={colors.primary}
-              />
-            )}
-          </View>
-        </View>
-
-        <View style={styles.itemRight}>
-          <Pressable
-            style={[styles.playButton, isPlaying && styles.playButtonActive]}
-            onPress={() => onPlay?.(recording)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            {isPlaying ? (
-              <View style={styles.stopIcon} />
-            ) : (
-              <View style={styles.playIcon} />
-            )}
-          </Pressable>
+      {/* Top row: Title and Duration */}
+      <View style={styles.itemHeader}>
+        <Text style={styles.itemTitle} numberOfLines={1}>
+          {getTitle(recording)}
+        </Text>
+        <View style={styles.itemHeaderRight}>
           {isPlaying ? (
             <Pressable
               style={styles.speedButton}
@@ -154,6 +142,25 @@ function RecordingItem({
           )}
         </View>
       </View>
+
+      {/* Time */}
+      <Text style={styles.itemTime}>{getTime(recording)}</Text>
+
+      {/* Status or Transcript */}
+      {statusInfo ? (
+        <View style={styles.statusRow}>
+          {statusInfo.label === "Uploading" && (
+            <Text style={styles.statusIcon}>↑</Text>
+          )}
+          <Text style={[styles.itemStatus, { color: statusInfo.color }]}>
+            {statusInfo.label}
+          </Text>
+        </View>
+      ) : recording.transcription ? (
+        <Text style={styles.transcriptSnippet} numberOfLines={2}>
+          {recording.transcription}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -167,15 +174,13 @@ function getDateKey(timestamp: number): string {
   const recordingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
   if (recordingDate.getTime() === today.getTime()) {
-    return "Today";
+    return "TODAY";
   } else if (recordingDate.getTime() === yesterday.getTime()) {
-    return "Yesterday";
+    return "YESTERDAY";
   }
-  return date.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  // Format as "DEC 4, 2025"
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
 type Section = {
@@ -270,7 +275,6 @@ export function RecordingsList({
 const styles = StyleSheet.create({
   list: {
     paddingBottom: 160,
-    paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
   },
   sectionHeader: {
@@ -281,11 +285,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   sectionHeaderText: {
-    color: colors.textSecondary,
+    color: colors.textTertiary,
     fontSize: typography.xs,
     fontWeight: typography.semibold,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   empty: {
     flex: 1,
@@ -306,79 +309,54 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   item: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
     backgroundColor: colors.backgroundElevated,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
   },
   itemSeparator: {
-    height: spacing.sm,
+    height: spacing.md,
   },
   itemPressed: {
     opacity: 0.7,
   },
-  itemContent: {
+  itemHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: spacing.xs,
   },
-  itemInfo: {
-    flex: 1,
-    marginRight: spacing.md,
+  itemHeaderRight: {
+    marginLeft: spacing.md,
   },
   itemTitle: {
     color: colors.textPrimary,
-    fontSize: typography.md,
-    fontWeight: typography.medium,
-    marginBottom: spacing.xs,
+    fontSize: typography.xl,
+    fontWeight: typography.semibold,
+    flex: 1,
   },
-  itemMeta: {
+  itemTime: {
+    color: colors.textTertiary,
+    fontSize: typography.sm,
     marginBottom: spacing.sm,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  statusIcon: {
+    color: colors.primary,
+    fontSize: typography.sm,
   },
   itemStatus: {
     fontSize: typography.sm,
     fontWeight: typography.medium,
   },
-  waveformRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
   transcriptSnippet: {
     color: colors.textSecondary,
     fontSize: typography.sm,
-    lineHeight: typography.sm * 1.4,
-    flex: 1,
-  },
-  itemRight: {
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  playButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  playButtonActive: {
-    backgroundColor: colors.error,
-  },
-  playIcon: {
-    width: 0,
-    height: 0,
-    marginLeft: 3,
-    borderLeftWidth: 12,
-    borderTopWidth: 7,
-    borderBottomWidth: 7,
-    borderLeftColor: colors.white,
-    borderTopColor: "transparent",
-    borderBottomColor: "transparent",
-  },
-  stopIcon: {
-    width: 14,
-    height: 14,
-    backgroundColor: colors.white,
-    borderRadius: 2,
+    lineHeight: typography.sm * 1.5,
   },
   itemDuration: {
     color: colors.textTertiary,
@@ -388,7 +366,7 @@ const styles = StyleSheet.create({
   speedButton: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: colors.backgroundElevated,
+    backgroundColor: colors.background,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,

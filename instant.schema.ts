@@ -28,6 +28,9 @@ const _schema = i.schema({
       // Transcription
       transcription: i.string().optional(),
 
+      // AI-generated title (up to 6 words)
+      title: i.string().optional(),
+
       // Status tracking
       status: i.string().indexed(),
       errorMessage: i.string().optional(),

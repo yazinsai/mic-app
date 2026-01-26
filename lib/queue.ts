@@ -3,6 +3,7 @@ import type { AppSchema } from "@/instant.schema";
 import { db } from "./db";
 import { uploadToStorage, FileTooLargeError } from "./storage";
 import { transcribeAudio } from "./transcription";
+import { generateTitle } from "./titleGeneration";
 import { sendWebhook, type WebhookPayload } from "./webhook";
 import { getLocalFileInfo, getFileSize, MAX_TRANSCRIPTION_SIZE } from "./audio";
 
@@ -66,7 +67,9 @@ async function processRecording(
   const { id, status, localFilePath } = recording;
 
   try {
-    if (status === "recorded" || status === "upload_failed") {
+    // If the app was killed mid-upload, a recording can get stuck in "uploading".
+    // Treat it as retryable and attempt the upload again.
+    if (status === "recorded" || status === "upload_failed" || status === "uploading") {
       await handleUpload(id, localFilePath);
     }
 
@@ -152,10 +155,19 @@ async function handleTranscription(
 
     const transcription = await transcribeAudio(localFilePath);
 
+    // Generate a short title from the transcription
+    let title: string | undefined;
+    try {
+      title = await generateTitle(transcription);
+    } catch (err) {
+      console.warn("Failed to generate title:", err);
+    }
+
     await db.transact(
       db.tx.recordings[id].update({
         status: "transcribed",
         transcription,
+        title: title ?? null,
         errorMessage: null,
       })
     );
@@ -208,10 +220,12 @@ async function updateStatus(
   status: RecordingStatus,
   errorMessage?: string
 ): Promise<void> {
+  // Also stamp the attempt time so we can detect and recover from "stuck" in-progress states.
   await db.transact(
     db.tx.recordings[id].update({
       status,
       errorMessage: errorMessage ?? null,
+      lastAttemptAt: Date.now(),
     })
   );
 }
@@ -224,9 +238,19 @@ function getErrorMessage(error: unknown): string {
 }
 
 const RETRY_STATUS_MAP: Partial<Record<RecordingStatus, RecordingStatus>> = {
+  // Failed states
   upload_failed: "recorded",
   transcription_failed: "uploaded",
   send_failed: "transcribed",
+
+  // In-progress states (recover from app kill / background suspension)
+  uploading: "recorded",
+  transcribing: "uploaded",
+  sending: "transcribed",
+
+  // Allow manual re-run even when a stage completed but downstream didn't happen
+  uploaded: "uploaded",
+  transcribed: "transcribed",
 };
 
 export async function retryRecording(id: string): Promise<void> {

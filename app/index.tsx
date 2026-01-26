@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { View, StyleSheet, Pressable, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
 import { Audio } from "expo-av";
@@ -116,11 +116,19 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {(pendingCount > 0 || failedCount > 0) && (
-        <View style={styles.statusBar}>
-          <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Recordings</Text>
+        <View style={styles.headerRight}>
+          {(pendingCount > 0 || failedCount > 0) && (
+            <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
+          )}
+          <Link href="/settings" asChild>
+            <Pressable style={styles.settingsButton}>
+              <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
+            </Pressable>
+          </Link>
         </View>
-      )}
+      </View>
 
       <View style={styles.content}>
         <RecordingsList
@@ -135,8 +143,7 @@ export default function HomeScreen() {
         />
       </View>
 
-      <View style={styles.fabRow}>
-        <View style={styles.fabSpacer} />
+      <View style={styles.fabContainer}>
         <Pressable
           onPress={handleStartRecording}
           disabled={hasPermission === false}
@@ -146,15 +153,8 @@ export default function HomeScreen() {
             hasPermission === false && styles.fabDisabled,
           ]}
         >
-          <View style={styles.fabInner} />
+          <Ionicons name="mic" size={32} color={colors.white} />
         </Pressable>
-        <View style={styles.fabSpacer}>
-          <Link href="/settings" asChild>
-            <Pressable style={styles.settingsButton}>
-              <Ionicons name="settings-outline" size={24} color={colors.textSecondary} />
-            </Pressable>
-          </Link>
-        </View>
       </View>
 
       <RecordingOverlay
@@ -177,60 +177,56 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  statusBar: {
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  headerTitle: {
+    color: colors.textPrimary,
+    fontSize: 32,
+    fontWeight: "700",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
   },
   content: {
     flex: 1,
   },
-  fabRow: {
+  fabContainer: {
     position: "absolute",
-    bottom: 80,
+    bottom: 40,
     left: 0,
     right: 0,
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  fabSpacer: {
-    flex: 1,
-    alignItems: "flex-end",
-    justifyContent: "center",
   },
   fab: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: colors.backgroundElevated,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 6,
-    borderColor: colors.borderLight,
-    ...shadows.md,
-  },
-  fabPressed: {
-    transform: [{ scale: 0.95 }],
-    borderColor: colors.error,
-  },
-  fabDisabled: {
-    opacity: 0.5,
-  },
-  fabInner: {
     width: 72,
     height: 72,
     borderRadius: 36,
     backgroundColor: colors.error,
+    justifyContent: "center",
+    alignItems: "center",
+    ...shadows.md,
+  },
+  fabPressed: {
+    transform: [{ scale: 0.95 }],
+    opacity: 0.9,
+  },
+  fabDisabled: {
+    opacity: 0.5,
   },
   settingsButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.backgroundElevated,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
   },
 });
