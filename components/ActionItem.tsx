@@ -88,11 +88,6 @@ export function ActionItem({ action }: ActionItemProps) {
           {action.description}
         </Text>
       )}
-      {action.result && (
-        <Text style={styles.result} numberOfLines={2}>
-          {action.result}
-        </Text>
-      )}
       {action.errorMessage && (
         <Text style={styles.error} numberOfLines={2}>
           {action.errorMessage}
@@ -145,12 +140,6 @@ const styles = StyleSheet.create({
   },
   description: {
     color: colors.textSecondary,
-    fontSize: typography.sm,
-    marginTop: spacing.xs,
-    lineHeight: typography.sm * 1.4,
-  },
-  result: {
-    color: colors.success,
     fontSize: typography.sm,
     marginTop: spacing.xs,
     lineHeight: typography.sm * 1.4,

@@ -11,6 +11,7 @@ import {
   Platform,
   Linking,
 } from "react-native";
+import Markdown from "react-native-markdown-display";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Link } from "expo-router";
@@ -376,7 +377,9 @@ export default function HomeScreen() {
                 <View style={styles.resultSection}>
                   <Text style={styles.sectionLabel}>Result</Text>
                   <View style={styles.resultBox}>
-                    <Text style={styles.resultText}>{selectedAction.result}</Text>
+                    <Markdown style={markdownStyles}>
+                      {selectedAction.result}
+                    </Markdown>
                   </View>
                 </View>
               )}
@@ -619,11 +622,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.md,
   },
-  resultText: {
-    color: colors.textSecondary,
-    fontSize: typography.sm,
-    lineHeight: typography.sm * 1.6,
-  },
   errorBox: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -711,5 +709,89 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.8,
+  },
+});
+
+// Markdown styles for result rendering
+const markdownStyles = StyleSheet.create({
+  body: {
+    color: colors.textSecondary,
+    fontSize: typography.sm,
+    lineHeight: typography.sm * 1.6,
+  },
+  heading1: {
+    color: colors.textPrimary,
+    fontSize: typography.xl,
+    fontWeight: "700",
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  heading2: {
+    color: colors.textPrimary,
+    fontSize: typography.lg,
+    fontWeight: "600",
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  heading3: {
+    color: colors.textPrimary,
+    fontSize: typography.base,
+    fontWeight: "600",
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  paragraph: {
+    marginBottom: spacing.sm,
+  },
+  strong: {
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  em: {
+    fontStyle: "italic",
+  },
+  bullet_list: {
+    marginBottom: spacing.sm,
+  },
+  ordered_list: {
+    marginBottom: spacing.sm,
+  },
+  list_item: {
+    marginBottom: spacing.xs,
+  },
+  code_inline: {
+    backgroundColor: colors.backgroundElevated,
+    color: colors.primary,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontSize: typography.xs,
+  },
+  fence: {
+    backgroundColor: colors.backgroundElevated,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    marginVertical: spacing.sm,
+  },
+  code_block: {
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+  },
+  blockquote: {
+    backgroundColor: colors.backgroundElevated,
+    borderLeftColor: colors.primary,
+    borderLeftWidth: 3,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.sm,
+    marginVertical: spacing.sm,
+  },
+  link: {
+    color: colors.primary,
+  },
+  hr: {
+    backgroundColor: colors.border,
+    height: 1,
+    marginVertical: spacing.md,
   },
 });
