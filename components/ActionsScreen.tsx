@@ -321,13 +321,11 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingBottom: 160,
-    paddingHorizontal: spacing.lg,
   },
   sectionHeader: {
     backgroundColor: colors.background,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
-    marginHorizontal: -spacing.lg,
     paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
