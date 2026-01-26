@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun --watch src/index.ts"
+    "start": "./start.sh",
+    "extract": "bun run src/index.ts",
+    "execute": "bun run src/action-executor.ts",
+    "dev:extract": "bun --watch src/index.ts",
+    "dev:execute": "bun --watch src/action-executor.ts"
   },
   "dependencies": {
     "@instantdb/admin": "^0.18.7"
