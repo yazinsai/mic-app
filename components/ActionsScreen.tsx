@@ -1,4 +1,5 @@
-import { View, Text, SectionList, StyleSheet, Pressable, Alert } from "react-native";
+import { useState, useMemo } from "react";
+import { View, Text, SectionList, StyleSheet, Pressable, Alert, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionItem, type Action } from "./ActionItem";
 import { colors, spacing, typography, radii } from "@/constants/Colors";
@@ -8,7 +9,9 @@ interface ActionsScreenProps {
   onActionPress?: (action: Action) => void;
 }
 
+type ViewMode = "timeline" | "type";
 type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
+type ActionStatus = "pending" | "in_progress" | "completed" | "failed";
 
 const TYPE_ORDER: ActionType[] = ["idea", "bug", "todo", "feature", "question", "command", "note"];
 const TYPE_LABELS: Record<ActionType, string> = {
@@ -23,8 +26,10 @@ const TYPE_LABELS: Record<ActionType, string> = {
 
 type Section = {
   title: string;
-  type: ActionType;
+  type?: ActionType;
+  key: string;
   data: Action[];
+  isRunning?: boolean;
 };
 
 function groupActionsByType(actions: Action[]): Section[] {
@@ -41,8 +46,47 @@ function groupActionsByType(actions: Action[]): Section[] {
     .map((type) => ({
       title: TYPE_LABELS[type],
       type,
+      key: type,
       data: grouped.get(type) || [],
     }));
+}
+
+function groupActionsForTimeline(actions: Action[]): Section[] {
+  const running: Action[] = [];
+  const rest: Action[] = [];
+
+  for (const action of actions) {
+    if (action.status === "in_progress") {
+      running.push(action);
+    } else {
+      rest.push(action);
+    }
+  }
+
+  // Sort running by startedAt (most recent first), rest by extractedAt
+  running.sort((a, b) => (b.startedAt ?? b.extractedAt) - (a.startedAt ?? a.extractedAt));
+  rest.sort((a, b) => b.extractedAt - a.extractedAt);
+
+  const sections: Section[] = [];
+
+  if (running.length > 0) {
+    sections.push({
+      title: "Running",
+      key: "running",
+      data: running,
+      isRunning: true,
+    });
+  }
+
+  if (rest.length > 0) {
+    sections.push({
+      title: "All Actions",
+      key: "all",
+      data: rest,
+    });
+  }
+
+  return sections;
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -78,10 +122,65 @@ function ActionCard({ action, onPress }: { action: Action; onPress?: () => void 
   );
 }
 
+interface ViewToggleProps {
+  value: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}
+
+function ViewToggle({ value, onChange }: ViewToggleProps) {
+  return (
+    <View style={styles.toggleContainer}>
+      <Pressable
+        style={[styles.toggleOption, value === "timeline" && styles.toggleOptionActive]}
+        onPress={() => onChange("timeline")}
+      >
+        <Ionicons
+          name="time-outline"
+          size={16}
+          color={value === "timeline" ? colors.primary : colors.textTertiary}
+        />
+        <Text style={[styles.toggleText, value === "timeline" && styles.toggleTextActive]}>
+          Timeline
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[styles.toggleOption, value === "type" && styles.toggleOptionActive]}
+        onPress={() => onChange("type")}
+      >
+        <Ionicons
+          name="layers-outline"
+          size={16}
+          color={value === "type" ? colors.primary : colors.textTertiary}
+        />
+        <Text style={[styles.toggleText, value === "type" && styles.toggleTextActive]}>
+          By Type
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
-  const sections = groupActionsByType(actions);
-  const totalCount = actions.length;
-  const pendingCount = actions.filter((a) => a.status === "pending").length;
+  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter actions by search query
+  const filteredActions = useMemo(() => {
+    if (!searchQuery.trim()) return actions;
+    const query = searchQuery.toLowerCase();
+    return actions.filter((action) => {
+      return (
+        action.title.toLowerCase().includes(query) ||
+        action.description?.toLowerCase().includes(query) ||
+        action.type.toLowerCase().includes(query) ||
+        action.result?.toLowerCase().includes(query)
+      );
+    });
+  }, [actions, searchQuery]);
+
+  const sections = viewMode === "timeline"
+    ? groupActionsForTimeline(filteredActions)
+    : groupActionsByType(filteredActions);
 
   if (actions.length === 0) {
     return (
@@ -99,39 +198,67 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
 
   return (
     <View style={styles.container}>
-      {/* Stats Header */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{totalCount}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statNumber, { color: colors.warning }]}>{pendingCount}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputWrapper}>
+          <Ionicons name="search" size={18} color={colors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search actions..."
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} style={styles.clearButton}>
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
         </View>
       </View>
 
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ActionCard action={item} onPress={() => onActionPress?.(item)} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>{section.title}</Text>
-            <View style={styles.sectionBadge}>
-              <Text style={styles.sectionBadgeText}>{section.data.length}</Text>
+      {/* View Toggle */}
+      <ViewToggle value={viewMode} onChange={setViewMode} />
+
+      {filteredActions.length === 0 ? (
+        <View style={styles.noResults}>
+          <Text style={styles.noResultsText}>No actions match "{searchQuery}"</Text>
+        </View>
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <ActionCard action={item} onPress={() => onActionPress?.(item)} />
+          )}
+          renderSectionHeader={({ section }) => (
+            <View style={[styles.sectionHeader, section.isRunning && styles.sectionHeaderRunning]}>
+              {section.isRunning && (
+                <View style={styles.runningIndicator}>
+                  <View style={styles.runningDot} />
+                </View>
+              )}
+              <Text style={[styles.sectionHeaderText, section.isRunning && styles.sectionHeaderTextRunning]}>
+                {section.title}
+              </Text>
+              <View style={[styles.sectionBadge, section.isRunning && styles.sectionBadgeRunning]}>
+                <Text style={[styles.sectionBadgeText, section.isRunning && styles.sectionBadgeTextRunning]}>
+                  {section.data.length}
+                </Text>
+              </View>
             </View>
-          </View>
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        SectionSeparatorComponent={() => <View style={styles.sectionSeparator} />}
-        stickySectionHeadersEnabled
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
+          )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          SectionSeparatorComponent={() => <View style={styles.sectionSeparator} />}
+          stickySectionHeadersEnabled
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        />
+      )}
     </View>
   );
 }
@@ -140,34 +267,57 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  statsContainer: {
+  searchContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  searchInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+  },
+  searchIcon: {
+    marginRight: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    fontSize: typography.base,
+    color: colors.textPrimary,
+  },
+  clearButton: {
+    padding: spacing.xs,
+  },
+  toggleContainer: {
+    flexDirection: "row",
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radii.lg,
+    padding: 4,
+  },
+  toggleOption: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    gap: spacing.xl,
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
   },
-  statItem: {
-    alignItems: "center",
+  toggleOptionActive: {
+    backgroundColor: colors.background,
   },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    fontVariant: ["tabular-nums"],
-  },
-  statLabel: {
-    fontSize: typography.xs,
+  toggleText: {
+    fontSize: typography.sm,
+    fontWeight: "500",
     color: colors.textTertiary,
-    marginTop: 2,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
-  statDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: colors.border,
+  toggleTextActive: {
+    color: colors.primary,
   },
   list: {
     paddingBottom: 160,
@@ -183,11 +333,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
+  sectionHeaderRunning: {
+    // Running section has subtle highlight
+  },
   sectionHeaderText: {
     color: colors.textSecondary,
     fontSize: typography.sm,
     fontWeight: typography.semibold,
     letterSpacing: 0.3,
+  },
+  sectionHeaderTextRunning: {
+    color: colors.primary,
+  },
+  runningIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary + "30",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  runningDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
   },
   sectionBadge: {
     backgroundColor: colors.backgroundElevated,
@@ -195,10 +365,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: radii.sm,
   },
+  sectionBadgeRunning: {
+    backgroundColor: colors.primary + "20",
+  },
   sectionBadgeText: {
     color: colors.textTertiary,
     fontSize: typography.xs,
     fontWeight: typography.medium,
+  },
+  sectionBadgeTextRunning: {
+    color: colors.primary,
   },
   separator: {
     height: spacing.sm,
@@ -248,5 +424,16 @@ const styles = StyleSheet.create({
     fontSize: typography.base,
     textAlign: "center",
     lineHeight: typography.base * 1.5,
+  },
+  noResults: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xxl,
+  },
+  noResultsText: {
+    color: colors.textTertiary,
+    fontSize: typography.base,
+    textAlign: "center",
   },
 });

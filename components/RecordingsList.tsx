@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable, SectionList, StyleSheet, Alert } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { DeleteConfirmationOverlay } from "./DeleteConfirmationOverlay";
 import { ActionsList } from "./ActionsList";
 import type { Recording } from "@/lib/queue";
@@ -10,10 +11,6 @@ interface RecordingsListProps {
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
   onShare: (recording: Recording) => void;
-  onPlay?: (recording: Recording) => void;
-  playingId?: string | null;
-  playbackRate?: number;
-  onCyclePlaybackRate?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -79,24 +76,21 @@ function RecordingItem({
   onRetry,
   onDeleteRequest,
   onShare,
-  onPlay,
-  isPlaying,
-  playbackRate,
-  onCyclePlaybackRate,
+  isExpanded,
+  onToggleExpand,
 }: {
   recording: Recording;
   onRetry: (id: string) => void;
   onDeleteRequest: (recording: Recording) => void;
   onShare: (recording: Recording) => void;
-  onPlay?: (recording: Recording) => void;
-  isPlaying?: boolean;
-  playbackRate?: number;
-  onCyclePlaybackRate?: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
   const isFailed = recording.status.includes("failed");
   const statusInfo = getStatusInfo(recording.status, recording.processingStatus);
   const isRetryable = recording.status !== "sent";
   const actions = recording.actions ?? [];
+  const hasActions = actions.length > 0;
 
   const handleLongPress = () => {
     Alert.alert(
@@ -127,38 +121,34 @@ function RecordingItem({
   return (
     <Pressable
       style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
-      onPress={() => onPlay?.(recording)}
+      onPress={hasActions ? onToggleExpand : undefined}
       onLongPress={handleLongPress}
     >
-      {/* Top row: Title and Duration */}
+      {/* Top row: Title, Duration/Actions count */}
       <View style={styles.itemHeader}>
-        <Text style={styles.itemTitle} numberOfLines={1}>
-          {getTitle(recording)}
-        </Text>
-        <View style={styles.itemHeaderRight}>
-          {isPlaying ? (
-            <Pressable
-              style={styles.speedButton}
-              onPress={onCyclePlaybackRate}
-              hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
-            >
-              <Text style={styles.speedText}>
-                {playbackRate === 1 ? "1x" : playbackRate === 1.5 ? "1.5x" : "2x"}
-              </Text>
-            </Pressable>
-          ) : (
-            <Text style={styles.itemDuration}>
-              {formatDuration(recording.duration)}
-            </Text>
-          )}
+        <View style={styles.itemTitleContainer}>
+          <Text style={styles.itemTitle} numberOfLines={1}>
+            {getTitle(recording)}
+          </Text>
+          <Text style={styles.itemTime}>
+            {getTime(recording)} · {formatDuration(recording.duration)}
+          </Text>
         </View>
+
+        {hasActions && (
+          <View style={styles.actionsIndicator}>
+            <Text style={styles.actionsCount}>{actions.length}</Text>
+            <Ionicons
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={16}
+              color={colors.textTertiary}
+            />
+          </View>
+        )}
       </View>
 
-      {/* Time */}
-      <Text style={styles.itemTime}>{getTime(recording)}</Text>
-
-      {/* Status or Transcript */}
-      {statusInfo ? (
+      {/* Status */}
+      {statusInfo && (
         <View style={styles.statusRow}>
           {statusInfo.label === "Uploading" && (
             <Text style={styles.statusIcon}>↑</Text>
@@ -170,14 +160,21 @@ function RecordingItem({
             {statusInfo.label}
           </Text>
         </View>
-      ) : recording.transcription ? (
+      )}
+
+      {/* Transcript snippet - only show when collapsed or no actions */}
+      {!isExpanded && !statusInfo && recording.transcription && (
         <Text style={styles.transcriptSnippet} numberOfLines={2}>
           {recording.transcription}
         </Text>
-      ) : null}
+      )}
 
-      {/* Actions */}
-      {actions.length > 0 && <ActionsList actions={actions} />}
+      {/* Actions - only show when expanded */}
+      {isExpanded && hasActions && (
+        <View style={styles.actionsContainer}>
+          <ActionsList actions={actions} />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -225,12 +222,21 @@ export function RecordingsList({
   onRetry,
   onDelete,
   onShare,
-  onPlay,
-  playingId,
-  playbackRate,
-  onCyclePlaybackRate,
 }: RecordingsListProps) {
   const [recordingToDelete, setRecordingToDelete] = useState<Recording | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   if (recordings.length === 0) {
     return (
@@ -263,10 +269,8 @@ export function RecordingsList({
             onRetry={onRetry}
             onDeleteRequest={setRecordingToDelete}
             onShare={onShare}
-            onPlay={onPlay}
-            isPlaying={playingId === item.id}
-            playbackRate={playbackRate}
-            onCyclePlaybackRate={onCyclePlaybackRate}
+            isExpanded={expandedIds.has(item.id)}
+            onToggleExpand={() => toggleExpand(item.id)}
           />
         )}
         renderSectionHeader={({ section }) => (
@@ -326,41 +330,54 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   item: {
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.backgroundElevated,
     borderRadius: radii.lg,
   },
   itemSeparator: {
-    height: spacing.md,
+    height: spacing.lg,
   },
   itemPressed: {
-    opacity: 0.7,
+    opacity: 0.8,
   },
   itemHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    gap: spacing.md,
   },
-  itemHeaderRight: {
-    marginLeft: spacing.md,
+  itemTitleContainer: {
+    flex: 1,
   },
   itemTitle: {
     color: colors.textPrimary,
-    fontSize: typography.xl,
+    fontSize: typography.base,
     fontWeight: typography.semibold,
-    flex: 1,
   },
   itemTime: {
     color: colors.textTertiary,
+    fontSize: typography.xs,
+    marginTop: 2,
+  },
+  actionsIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  actionsCount: {
+    color: colors.textTertiary,
     fontSize: typography.sm,
-    marginBottom: spacing.sm,
+    fontWeight: typography.medium,
+  },
+  actionsContainer: {
+    marginTop: spacing.sm,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
+    marginTop: spacing.sm,
   },
   statusIcon: {
     color: colors.primary,
@@ -374,24 +391,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: typography.sm,
     lineHeight: typography.sm * 1.5,
-  },
-  itemDuration: {
-    color: colors.textTertiary,
-    fontSize: typography.sm,
-    fontVariant: ["tabular-nums"],
-  },
-  speedButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.background,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  speedText: {
-    color: colors.textSecondary,
-    fontSize: typography.sm,
-    fontWeight: typography.medium,
-    fontVariant: ["tabular-nums"],
+    marginTop: spacing.sm,
   },
 });

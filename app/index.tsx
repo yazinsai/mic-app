@@ -1,10 +1,9 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  Alert,
   Modal,
   TextInput,
   ScrollView,
@@ -13,8 +12,8 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Link } from "expo-router";
-import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { RecordingOverlay } from "@/components/RecordingOverlay";
@@ -22,14 +21,83 @@ import { QueueStatus } from "@/components/QueueStatus";
 import { RecordingsList } from "@/components/RecordingsList";
 import { ActionsScreen } from "@/components/ActionsScreen";
 import { BottomNavBar } from "@/components/BottomNavBar";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { useQueue } from "@/hooks/useQueue";
 import { useRecorder } from "@/hooks/useRecorder";
 import type { Recording } from "@/lib/queue";
 import type { Action } from "@/components/ActionItem";
+
+// Extended action type that includes the parent recording data
+export interface ActionWithRecording extends Action {
+  _recording?: {
+    id: string;
+    localFilePath: string;
+    duration: number;
+    title?: string | null;
+  };
+}
 import { colors, spacing, typography, radii } from "@/constants/Colors";
 import { db } from "@/lib/db";
 
 type TabKey = "actions" | "recordings";
+type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
+type ActionStatus = "pending" | "in_progress" | "completed" | "failed";
+
+const TYPE_CONFIG: Record<ActionType, { label: string; color: string; bg: string }> = {
+  bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
+  feature: { label: "FEATURE", color: "#93c5fd", bg: "#1e3a5f" },
+  todo: { label: "TODO", color: "#86efac", bg: "#14532d" },
+  note: { label: "NOTE", color: "#d1d5db", bg: "#374151" },
+  question: { label: "?", color: "#fcd34d", bg: "#78350f" },
+  command: { label: "CMD", color: "#c4b5fd", bg: "#4c1d95" },
+  idea: { label: "IDEA", color: "#fbbf24", bg: "#92400e" },
+};
+
+function getStatusDisplay(action: Action): { label: string; color: string; bg: string } {
+  const status = action.status as ActionStatus;
+
+  // Check if awaiting user feedback
+  if (action.messages) {
+    try {
+      const messages = JSON.parse(action.messages) as { role: string }[];
+      if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage.role === "assistant" && status === "completed") {
+          return { label: "Review", color: "#fbbf24", bg: "#78350f" };
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  switch (status) {
+    case "pending":
+      return { label: "Queued", color: colors.textTertiary, bg: colors.backgroundElevated };
+    case "in_progress":
+      return { label: "Running", color: colors.primary, bg: colors.primary + "20" };
+    case "completed":
+      return { label: "Done", color: colors.success, bg: colors.success + "20" };
+    case "failed":
+      return { label: "Failed", color: colors.error, bg: colors.error + "20" };
+    default:
+      return { label: "Queued", color: colors.textTertiary, bg: colors.backgroundElevated };
+  }
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return "just now";
+}
 
 interface ThreadMessage {
   role: "user" | "assistant";
@@ -76,29 +144,44 @@ export default function HomeScreen() {
     triggerProcessing();
   });
 
-  // Collect all actions from all recordings
+  // Collect all actions from all recordings, including parent recording data
   const allActions = useMemo(() => {
-    const actions: Action[] = [];
+    const actions: ActionWithRecording[] = [];
     for (const recording of recordings) {
       if (recording.actions) {
-        actions.push(...recording.actions);
+        for (const action of recording.actions) {
+          actions.push({
+            ...action,
+            _recording: {
+              id: recording.id,
+              localFilePath: recording.localFilePath,
+              duration: recording.duration,
+              title: recording.title,
+            },
+          });
+        }
       }
     }
     // Sort by extractedAt descending (newest first)
     return actions.sort((a, b) => b.extractedAt - a.extractedAt);
   }, [recordings]);
 
-  // Action detail/feedback modal state
-  const [selectedAction, setSelectedAction] = useState<Action | null>(null);
+  // Action detail/feedback modal state - store ID for real-time updates
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
 
-  const handleActionPress = (action: Action) => {
-    setSelectedAction(action);
+  // Look up action from allActions to get real-time updates
+  const selectedAction: ActionWithRecording | null = selectedActionId
+    ? allActions.find((a) => a.id === selectedActionId) ?? null
+    : null;
+
+  const handleActionPress = (action: ActionWithRecording) => {
+    setSelectedActionId(action.id);
     setFeedbackText("");
   };
 
   const handleCloseModal = () => {
-    setSelectedAction(null);
+    setSelectedActionId(null);
     setFeedbackText("");
   };
 
@@ -135,65 +218,6 @@ export default function HomeScreen() {
     }
   };
 
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const [playbackRate, setPlaybackRate] = useState<number>(1);
-
-  const cyclePlaybackRate = async () => {
-    const rates = [1, 1.5, 2];
-    const currentIndex = rates.indexOf(playbackRate);
-    const nextRate = rates[(currentIndex + 1) % rates.length];
-    setPlaybackRate(nextRate);
-    if (soundRef.current) {
-      await soundRef.current.setRateAsync(nextRate, true);
-    }
-  };
-
-  const handlePlay = async (recording: Recording) => {
-    try {
-      // If same recording is playing, stop it
-      if (playingId === recording.id && soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-        setPlayingId(null);
-        return;
-      }
-
-      // Stop any existing playback
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-        setPlayingId(null);
-      }
-
-      if (!recording.localFilePath) {
-        Alert.alert("Error", "Recording file not found");
-        return;
-      }
-
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: recording.localFilePath },
-        { shouldPlay: true, rate: playbackRate, shouldCorrectPitch: true }
-      );
-      soundRef.current = sound;
-      setPlayingId(recording.id);
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync();
-          soundRef.current = null;
-          setPlayingId(null);
-        }
-      });
-    } catch (error) {
-      console.error("Playback error:", error);
-      Alert.alert("Error", "Could not play recording");
-    }
-  };
-
   const headerTitle = activeTab === "actions" ? "Actions" : "Recordings";
 
   return (
@@ -221,10 +245,6 @@ export default function HomeScreen() {
             onRetry={retry}
             onDelete={remove}
             onShare={share}
-            onPlay={handlePlay}
-            playingId={playingId}
-            playbackRate={playbackRate}
-            onCyclePlaybackRate={cyclePlaybackRate}
           />
         )}
       </View>
@@ -256,18 +276,36 @@ export default function HomeScreen() {
         onRequestClose={handleCloseModal}
       >
         {selectedAction && (
-          <KeyboardAvoidingView
-            style={styles.modalContainer}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
+          <GestureHandlerRootView style={styles.modalContainer}>
+            <KeyboardAvoidingView
+              style={styles.flex1}
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+            >
             <View style={styles.modalHeader}>
               <Pressable onPress={handleCloseModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.textSecondary} />
               </Pressable>
-              <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>
-                  {selectedAction.type.toUpperCase()}
-                </Text>
+              <View style={styles.headerBadges}>
+                {(() => {
+                  const typeConfig = TYPE_CONFIG[selectedAction.type as ActionType] ?? TYPE_CONFIG.note;
+                  return (
+                    <View style={[styles.typeBadgeColored, { backgroundColor: typeConfig.bg }]}>
+                      <Text style={[styles.typeBadgeColoredText, { color: typeConfig.color }]}>
+                        {typeConfig.label}
+                      </Text>
+                    </View>
+                  );
+                })()}
+                {(() => {
+                  const statusDisplay = getStatusDisplay(selectedAction);
+                  return (
+                    <View style={[styles.statusBadge, { backgroundColor: statusDisplay.bg }]}>
+                      <Text style={[styles.statusBadgeText, { color: statusDisplay.color }]}>
+                        {statusDisplay.label}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </View>
               <View style={styles.headerSpacer} />
             </View>
@@ -276,6 +314,44 @@ export default function HomeScreen() {
               <Text style={styles.modalTitle}>{selectedAction.title}</Text>
               {selectedAction.description && (
                 <Text style={styles.modalDescription}>{selectedAction.description}</Text>
+              )}
+
+              {/* Timestamps */}
+              <View style={styles.timestampSection}>
+                <View style={styles.timestampItem}>
+                  <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+                  <Text style={styles.timestampText}>
+                    Created {formatRelativeTime(selectedAction.extractedAt)}
+                  </Text>
+                </View>
+                {selectedAction.startedAt && (
+                  <View style={styles.timestampItem}>
+                    <Ionicons name="play-outline" size={14} color={colors.textMuted} />
+                    <Text style={styles.timestampText}>
+                      Started {formatRelativeTime(selectedAction.startedAt)}
+                    </Text>
+                  </View>
+                )}
+                {selectedAction.completedAt && (
+                  <View style={styles.timestampItem}>
+                    <Ionicons name="checkmark-outline" size={14} color={colors.textMuted} />
+                    <Text style={styles.timestampText}>
+                      Completed {formatRelativeTime(selectedAction.completedAt)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Original Voice Note */}
+              {selectedAction._recording && (
+                <View style={styles.voiceNoteSection}>
+                  <Text style={styles.sectionLabel}>Original Voice Note</Text>
+                  <AudioPlayer
+                    uri={selectedAction._recording.localFilePath}
+                    duration={selectedAction._recording.duration}
+                    title={selectedAction._recording.title ?? undefined}
+                  />
+                </View>
               )}
 
               {/* Open App Button */}
@@ -289,10 +365,24 @@ export default function HomeScreen() {
                 </Pressable>
               )}
 
+              {/* Result */}
+              {selectedAction.result && (
+                <View style={styles.resultSection}>
+                  <Text style={styles.sectionLabel}>Result</Text>
+                  <View style={styles.resultBox}>
+                    <Text style={styles.resultText}>{selectedAction.result}</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Error */}
               {selectedAction.errorMessage && (
-                <View style={styles.errorBox}>
-                  <Ionicons name="alert-circle" size={18} color={colors.error} />
-                  <Text style={styles.errorText}>{selectedAction.errorMessage}</Text>
+                <View style={styles.errorSection}>
+                  <Text style={styles.sectionLabel}>Error</Text>
+                  <View style={styles.errorBox}>
+                    <Ionicons name="alert-circle" size={18} color={colors.error} />
+                    <Text style={styles.errorText}>{selectedAction.errorMessage}</Text>
+                  </View>
                 </View>
               )}
 
@@ -346,7 +436,8 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+          </GestureHandlerRootView>
         )}
       </Modal>
     </SafeAreaView>
@@ -357,6 +448,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  flex1: {
+    flex: 1,
   },
   header: {
     flexDirection: "row",
@@ -421,6 +515,30 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
+  headerBadges: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  typeBadgeColored: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  typeBadgeColoredText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  statusBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
   modalScroll: {
     flex: 1,
   },
@@ -438,6 +556,40 @@ const styles = StyleSheet.create({
     fontSize: typography.base,
     color: colors.textSecondary,
     lineHeight: typography.base * 1.5,
+    marginBottom: spacing.md,
+  },
+  timestampSection: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+  },
+  timestampItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  timestampText: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+  },
+  sectionLabel: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  voiceNoteSection: {
+    marginBottom: spacing.lg,
+  },
+  resultSection: {
+    marginBottom: spacing.lg,
+  },
+  errorSection: {
     marginBottom: spacing.lg,
   },
   openAppButton: {
@@ -457,19 +609,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   resultBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
     backgroundColor: "rgba(34, 197, 94, 0.1)",
     padding: spacing.md,
     borderRadius: radii.md,
-    marginBottom: spacing.lg,
   },
   resultText: {
-    flex: 1,
-    color: colors.success,
+    color: colors.textSecondary,
     fontSize: typography.sm,
-    lineHeight: typography.sm * 1.4,
+    lineHeight: typography.sm * 1.6,
   },
   errorBox: {
     flexDirection: "row",
@@ -478,7 +625,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239, 68, 68, 0.1)",
     padding: spacing.md,
     borderRadius: radii.md,
-    marginBottom: spacing.lg,
   },
   errorText: {
     flex: 1,
