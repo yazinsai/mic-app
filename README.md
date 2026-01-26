@@ -1,6 +1,6 @@
 # mic-app
 
-mic-app is a voice-to-action app that captures audio, transcribes it, and extracts actionable items using Claude. Record a voice note on your phone, and actions (bugs, todos, features, questions) are automatically extracted and displayed.
+mic-app is a voice-to-action app that captures audio, transcribes it, extracts actionable items, and **executes them with Claude Code**. Record a voice note on your phone describing a bug, feature, or idea—and watch it get implemented automatically.
 
 ## How it works
 
@@ -10,27 +10,87 @@ Phone (mic-app)                        Mac (voice-listener)
       ├─ Record audio                         │
       ├─ Upload to cloud                      │
       ├─ Transcribe via Groq                  │
-      ├─ Write to InstantDB ─────────────────>│ (polls for new recordings)
+      ├─ Write to InstantDB ─────────────────>│
       │                                       │
-      │                                       ├─ Spawn Claude CLI
-      │                                       ├─ Extract actions
-      │                                       ├─ Write actions to InstantDB
+      │                              ┌────────┴────────┐
+      │                              │                 │
+      │                         [Extractor]      [Executor]
+      │                              │                 │
+      │                         Extract &         Spawn Claude
+      │                         classify          Code to implement
+      │                              │                 │
+      │                              └────────┬────────┘
+      │                                       │
       │<────────── Real-time sync ────────────│
-      └─ Display actions in UI                │
+      │                                       │
+      ├─ Display actions in UI                │
+      ├─ View results & deployed apps         │
+      └─ Provide feedback via thread          │
 ```
 
 ## Features
 
 - **Voice recording** with pause/resume
 - **Auto-transcription** via Groq Whisper
-- **Action extraction** via Claude (bugs, features, todos, notes, questions, commands)
+- **Action extraction** via Claude (bugs, features, todos, notes, questions, commands, ideas)
+- **Automatic execution** via Claude Code
+- **Thread-based feedback** - iterate on any action with back-and-forth conversation
+- **Deploy URLs** - tap to open deployed prototypes
 - **Real-time sync** between phone and Mac via InstantDB
-- **Bottom navbar** with Actions and Recordings tabs
+
+## Voice Listener (Mac)
+
+The `voice-listener/` directory contains two workers:
+
+1. **Extractor** - Polls for transcriptions, extracts & classifies actions
+2. **Executor** - Picks up pending actions, spawns Claude Code to implement them
+
+### Setup
+
+```bash
+cd voice-listener
+bun install
+```
+
+Create `voice-listener/.env`:
+```
+INSTANT_APP_ID=your-app-id
+INSTANT_ADMIN_TOKEN=your-admin-token
+```
+
+### Running
+
+```bash
+# Start both workers (recommended)
+./start.sh
+
+# One-shot mode (process once and exit)
+./start.sh --once
+
+# Or run workers individually:
+bun run extract    # Extraction only
+bun run execute    # Execution only
+```
+
+### CLI Options
+
+Both workers support:
+- `--dry-run` - Preview without making changes
+- `--once` - Process once and exit
+- `--limit N` - Only process N items
+
+```bash
+# Test extraction
+bun run src/index.ts --dry-run --once --limit 1
+
+# Test execution
+bun run src/action-executor.ts --dry-run --once --limit 1
+```
 
 ## Development
 
 ```bash
-# Start the dev server
+# Start the Expo dev server
 npm run start
 
 # Push schema changes
@@ -61,41 +121,6 @@ Required env vars:
 - `EXPO_PUBLIC_INSTANT_APP_ID` (InstantDB app id)
 - `EXPO_PUBLIC_GROQ_API_KEY` (Groq API key for transcription)
 - `INSTANT_APP_ADMIN_TOKEN` (InstantDB admin token, for CLI commands)
-
-## Voice Listener (Mac)
-
-The `voice-listener/` directory contains a Node.js service that runs on your Mac to extract actions from transcriptions.
-
-### Setup
-
-```bash
-cd voice-listener
-bun install
-```
-
-Create `voice-listener/.env`:
-```
-INSTANT_APP_ID=your-app-id
-INSTANT_ADMIN_TOKEN=your-admin-token
-```
-
-### Running
-
-```bash
-# Test with one recording (dry run - no DB changes)
-bun run src/index.ts --dry-run --once --limit 1
-
-# Process one recording for real
-bun run src/index.ts --once --limit 1
-
-# Run continuously (production)
-bun run src/index.ts
-```
-
-Options:
-- `--dry-run` - Extract actions but don't save to database
-- `--once` - Process once and exit (don't poll continuously)
-- `--limit N` - Only process N recordings
 
 ## Build an Android APK (EAS)
 
