@@ -69,6 +69,9 @@ const _schema = i.schema({
 
       // Path to debug log file (for log watcher to tail)
       logFile: i.string().optional(),
+
+      // Flag to request cancellation of a running action
+      cancelRequested: i.boolean().optional(),
     }),
   },
   rooms: {},

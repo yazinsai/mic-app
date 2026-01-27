@@ -9,9 +9,9 @@ interface ActionsScreenProps {
   onActionPress?: (action: Action) => void;
 }
 
-type ViewMode = "timeline" | "type";
+type ViewMode = "timeline" | "type" | "status";
 type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
-type ActionStatus = "pending" | "in_progress" | "completed" | "failed";
+type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
 const TYPE_ORDER: ActionType[] = ["idea", "bug", "todo", "feature", "question", "command", "note"];
 const TYPE_LABELS: Record<ActionType, string> = {
@@ -22,6 +22,15 @@ const TYPE_LABELS: Record<ActionType, string> = {
   question: "Questions",
   command: "Commands",
   idea: "Ideas",
+};
+
+const STATUS_ORDER: ActionStatus[] = ["in_progress", "pending", "completed", "cancelled", "failed"];
+const STATUS_LABELS: Record<ActionStatus, string> = {
+  pending: "Pending",
+  in_progress: "Running",
+  completed: "Completed",
+  cancelled: "Stopped",
+  failed: "Failed",
 };
 
 type Section = {
@@ -48,6 +57,25 @@ function groupActionsByType(actions: Action[]): Section[] {
       type,
       key: type,
       data: grouped.get(type) || [],
+    }));
+}
+
+function groupActionsByStatus(actions: Action[]): Section[] {
+  const grouped = new Map<ActionStatus, Action[]>();
+
+  for (const action of actions) {
+    const status = action.status as ActionStatus;
+    const existing = grouped.get(status) || [];
+    grouped.set(status, [...existing, action]);
+  }
+
+  return STATUS_ORDER
+    .filter((status) => grouped.has(status))
+    .map((status) => ({
+      title: STATUS_LABELS[status],
+      key: `status-${status}`,
+      data: grouped.get(status) || [],
+      isRunning: status === "in_progress",
     }));
 }
 
@@ -156,6 +184,19 @@ function ViewToggle({ value, onChange }: ViewToggleProps) {
           By Type
         </Text>
       </Pressable>
+      <Pressable
+        style={[styles.toggleOption, value === "status" && styles.toggleOptionActive]}
+        onPress={() => onChange("status")}
+      >
+        <Ionicons
+          name="pulse-outline"
+          size={16}
+          color={value === "status" ? colors.primary : colors.textTertiary}
+        />
+        <Text style={[styles.toggleText, value === "status" && styles.toggleTextActive]}>
+          By Status
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -178,9 +219,16 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
     });
   }, [actions, searchQuery]);
 
-  const sections = viewMode === "timeline"
-    ? groupActionsForTimeline(filteredActions)
-    : groupActionsByType(filteredActions);
+  const sections = useMemo(() => {
+    switch (viewMode) {
+      case "timeline":
+        return groupActionsForTimeline(filteredActions);
+      case "type":
+        return groupActionsByType(filteredActions);
+      case "status":
+        return groupActionsByStatus(filteredActions);
+    }
+  }, [viewMode, filteredActions]);
 
   if (actions.length === 0) {
     return (

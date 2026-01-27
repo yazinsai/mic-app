@@ -6,7 +6,7 @@ import { colors, spacing, typography, radii } from "@/constants/Colors";
 export type Action = InstaQLEntity<AppSchema, "actions">;
 
 type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
-type ActionStatus = "pending" | "in_progress" | "completed" | "failed";
+type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
 const TYPE_CONFIG: Record<ActionType, { label: string; color: string; bg: string }> = {
   bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
@@ -51,6 +51,8 @@ function getStatusDisplay(action: Action): StatusDisplay {
       return { label: "Done", color: colors.success, bg: colors.success + "20" };
     case "failed":
       return { label: "Failed", color: colors.error, bg: colors.error + "20" };
+    case "cancelled":
+      return { label: "Stopped", color: colors.warning, bg: colors.warning + "20" };
     default:
       return { label: "Queued", color: colors.textTertiary, bg: colors.backgroundElevated };
   }

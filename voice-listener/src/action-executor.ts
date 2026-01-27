@@ -11,6 +11,13 @@ interface Action {
   status: string;
   projectPath?: string;
   messages?: string;
+  cancelRequested?: boolean;
+}
+
+interface ThreadMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
 }
 
 const POLL_INTERVAL = 5000; // 5 seconds
@@ -256,10 +263,61 @@ ${"=".repeat(60)}
 
     const proc = spawn({
       cmd,
+      stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
       cwd: projectDir,
     });
+
+    // Track user messages we've already injected (count only user messages)
+    const initialMessages: ThreadMessage[] = action.messages ? JSON.parse(action.messages) : [];
+    let lastSeenUserMessageCount = initialMessages.filter((m) => m.role === "user").length;
+    let wasCancelled = false;
+
+    // Polling function to check for new messages and cancellation requests
+    const pollForUpdates = async () => {
+      try {
+        const result = await db.query({
+          actions: { $: { where: { id: action.id } } },
+        });
+        const currentAction = (result.actions as Action[])?.[0];
+        if (!currentAction) return;
+
+        // Check for cancellation request
+        if (currentAction.cancelRequested) {
+          console.log(`\nCancellation requested for action ${action.id}`);
+          wasCancelled = true;
+          proc.kill("SIGTERM");
+          return;
+        }
+
+        // Check for new user messages to inject
+        const messages: ThreadMessage[] = currentAction.messages
+          ? JSON.parse(currentAction.messages)
+          : [];
+        const userMessages = messages.filter((m) => m.role === "user");
+
+        if (userMessages.length > lastSeenUserMessageCount) {
+          // New user message(s) found - inject into stdin
+          const newMessages = userMessages.slice(lastSeenUserMessageCount);
+          for (const msg of newMessages) {
+            const injection = `\n[USER FEEDBACK]: ${msg.content}\n`;
+            console.log(`\nInjecting user feedback: ${msg.content.slice(0, 100)}...`);
+            if (logFile) {
+              await appendFile(logFile, `\n=== INJECTED USER FEEDBACK ===\n${msg.content}\n===\n`);
+            }
+            proc.stdin.write(injection);
+          }
+          lastSeenUserMessageCount = userMessages.length;
+        }
+      } catch (error) {
+        // Polling errors are non-fatal, just log them
+        console.error("Polling error:", error);
+      }
+    };
+
+    // Start polling interval (every 3 seconds)
+    const pollInterval = setInterval(pollForUpdates, 3000);
 
     // Stream output and capture for log
     const decoder = new TextDecoder();
@@ -327,11 +385,23 @@ ${"=".repeat(60)}
     const stderr = await new Response(proc.stderr).text();
     const exitCode = await proc.exited;
 
+    // Stop polling
+    clearInterval(pollInterval);
+
     if (logFile) {
-      await appendFile(logFile, `\n\n=== EXIT ===\nCode: ${exitCode}\nStderr: ${stderr || "(none)"}\n`);
+      await appendFile(logFile, `\n\n=== EXIT ===\nCode: ${exitCode}\nStderr: ${stderr || "(none)"}\nCancelled: ${wasCancelled}\n`);
     }
 
-    if (exitCode !== 0) {
+    if (wasCancelled) {
+      console.log(`\nAction ${action.id} was cancelled`);
+      await db.transact(
+        db.tx.actions[action.id].update({
+          status: "cancelled",
+          cancelRequested: null,
+          completedAt: Date.now(),
+        })
+      );
+    } else if (exitCode !== 0) {
       console.error(`\nClaude exited with code ${exitCode}`);
       if (stderr) console.error("stderr:", stderr);
 
@@ -365,6 +435,7 @@ ${"=".repeat(60)}
     if (logFile) {
       await appendFile(logFile, `\n\n=== ERROR ===\n${errMsg}\n`);
     }
+    // Note: pollInterval may not exist if error occurred before spawn
     await db.transact(
       db.tx.actions[action.id].update({
         status: "failed",

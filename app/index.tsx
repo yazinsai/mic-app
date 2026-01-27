@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Alert,
 } from "react-native";
 import Markdown from "react-native-markdown-display";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -42,7 +43,7 @@ import { db } from "@/lib/db";
 
 type TabKey = "actions" | "recordings";
 type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
-type ActionStatus = "pending" | "in_progress" | "completed" | "failed";
+type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
 const TYPE_CONFIG: Record<ActionType, { label: string; color: string; bg: string }> = {
   bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
@@ -81,6 +82,8 @@ function getStatusDisplay(action: Action): { label: string; color: string; bg: s
       return { label: "Done", color: colors.success, bg: colors.success + "20" };
     case "failed":
       return { label: "Failed", color: colors.error, bg: colors.error + "20" };
+    case "cancelled":
+      return { label: "Stopped", color: colors.warning, bg: colors.warning + "20" };
     default:
       return { label: "Queued", color: colors.textTertiary, bg: colors.backgroundElevated };
   }
@@ -227,6 +230,29 @@ export default function HomeScreen() {
     setFeedbackText("");
   };
 
+  const handleStopAction = () => {
+    if (!selectedAction) return;
+
+    Alert.alert(
+      "Stop Action",
+      `Are you sure you want to stop "${selectedAction.title}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Stop",
+          style: "destructive",
+          onPress: async () => {
+            await db.transact(
+              db.tx.actions[selectedAction.id].update({
+                cancelRequested: true,
+              })
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const handleStartRecording = async () => {
     if (hasPermission === false) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -331,7 +357,19 @@ export default function HomeScreen() {
                   );
                 })()}
               </View>
-              <View style={styles.headerSpacer} />
+              {selectedAction.status === "in_progress" ? (
+                <Pressable
+                  onPress={handleStopAction}
+                  style={({ pressed }) => [styles.stopButton, pressed && styles.buttonPressed]}
+                >
+                  <View style={styles.stopButtonContent}>
+                    <Ionicons name="stop-circle" size={20} color={colors.error} />
+                    <Text style={styles.stopButtonText}>Stop</Text>
+                  </View>
+                </Pressable>
+              ) : (
+                <View style={styles.headerSpacer} />
+              )}
             </View>
 
             <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
@@ -636,6 +674,22 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
+  },
+  stopButton: {
+    backgroundColor: colors.error + "15",
+    borderRadius: radii.md,
+  },
+  stopButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  stopButtonText: {
+    color: colors.error,
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
   typeBadge: {
     backgroundColor: colors.backgroundElevated,
