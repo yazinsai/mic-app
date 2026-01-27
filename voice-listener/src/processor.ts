@@ -38,7 +38,7 @@ Format:
     {
       "type": "bug|feature|todo|question|command|idea",
       "title": "Brief title (under 80 chars)",
-      "description": "Optional longer description",
+      "description": "REQUIRED: Comprehensive description containing ALL context from the transcription needed to execute this action. Include: what needs to be done, specific requirements, constraints, background context, any mentioned files/features/components, user's intent, and any other relevant details. This description will be the primary source of information when executing the action, so be thorough and include everything from the transcription that would be useful.",
       "status": "pending",
       "projectPath": "Optional project path if mentioned"
     }
@@ -61,8 +61,6 @@ export async function processTranscription(transcription: string): Promise<Proce
         "-p",
         prompt,
         "--dangerously-skip-permissions",
-        "--max-budget-usd",
-        "2.00",
         "--output-format",
         "text",
       ],
