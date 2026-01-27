@@ -115,6 +115,23 @@ function parseMessages(json: string | undefined | null): ThreadMessage[] {
   }
 }
 
+interface Progress {
+  currentTask?: string;
+  todos?: Array<{ content: string; status: string }>;
+  recentTools?: Array<{ name: string; timestamp: number }>;
+  lastThinkingSummary?: string;
+  lastUpdate: number;
+}
+
+function parseProgress(json: string | undefined | null): Progress | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as Progress;
+  } catch {
+    return null;
+  }
+}
+
 export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("actions");
 
@@ -348,6 +365,98 @@ export default function HomeScreen() {
                   </View>
                 )}
               </View>
+
+              {/* Live Progress (for running actions) */}
+              {selectedAction.status === "in_progress" && (() => {
+                const progress = parseProgress(selectedAction.progress);
+                if (!progress) {
+                  return (
+                    <View style={styles.progressSection}>
+                      <View style={styles.progressHeader}>
+                        <View style={styles.progressDot} />
+                        <Text style={styles.progressLabel}>Running...</Text>
+                      </View>
+                      <Text style={styles.progressWaiting}>Waiting for updates...</Text>
+                    </View>
+                  );
+                }
+                return (
+                  <View style={styles.progressSection}>
+                    <View style={styles.progressHeader}>
+                      <View style={styles.progressDot} />
+                      <Text style={styles.progressLabel}>Live Progress</Text>
+                    </View>
+
+                    {/* Current Task */}
+                    {progress.currentTask && (
+                      <View style={styles.currentTaskBox}>
+                        <Ionicons name="cog" size={16} color={colors.primary} />
+                        <Text style={styles.currentTaskText}>{progress.currentTask}</Text>
+                      </View>
+                    )}
+
+                    {/* Todo List */}
+                    {progress.todos && progress.todos.length > 0 && (
+                      <View style={styles.todosBox}>
+                        {progress.todos.map((todo, idx) => (
+                          <View key={idx} style={styles.todoItem}>
+                            <Ionicons
+                              name={
+                                todo.status === "completed"
+                                  ? "checkmark-circle"
+                                  : todo.status === "in_progress"
+                                  ? "ellipse"
+                                  : "ellipse-outline"
+                              }
+                              size={14}
+                              color={
+                                todo.status === "completed"
+                                  ? colors.success
+                                  : todo.status === "in_progress"
+                                  ? colors.primary
+                                  : colors.textMuted
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.todoText,
+                                todo.status === "completed" && styles.todoCompleted,
+                                todo.status === "in_progress" && styles.todoActive,
+                              ]}
+                            >
+                              {todo.content}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Recent Tools */}
+                    {progress.recentTools && progress.recentTools.length > 0 && (
+                      <View style={styles.recentToolsBox}>
+                        <Text style={styles.recentToolsLabel}>Recent tools:</Text>
+                        <View style={styles.toolsRow}>
+                          {progress.recentTools.slice(-5).map((tool, idx) => (
+                            <View key={idx} style={styles.toolBadge}>
+                              <Text style={styles.toolBadgeText}>{tool.name}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Thinking Summary */}
+                    {progress.lastThinkingSummary && (
+                      <View style={styles.thinkingBox}>
+                        <Text style={styles.thinkingLabel}>Thinking:</Text>
+                        <Text style={styles.thinkingText} numberOfLines={3}>
+                          {progress.lastThinkingSummary}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
 
               {/* Original Voice Note */}
               {selectedAction._recording && (
@@ -603,6 +712,118 @@ const styles = StyleSheet.create({
   timestampText: {
     fontSize: typography.xs,
     color: colors.textMuted,
+  },
+  // Progress section styles
+  progressSection: {
+    marginBottom: spacing.lg,
+    backgroundColor: colors.primary + "10",
+    borderRadius: radii.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary + "30",
+  },
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  progressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  progressLabel: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  progressWaiting: {
+    fontSize: typography.sm,
+    color: colors.textMuted,
+    fontStyle: "italic",
+  },
+  currentTaskBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    marginBottom: spacing.md,
+  },
+  currentTaskText: {
+    flex: 1,
+    fontSize: typography.sm,
+    color: colors.textPrimary,
+    fontWeight: "500",
+  },
+  todosBox: {
+    backgroundColor: colors.background,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  todoItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  todoText: {
+    flex: 1,
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    lineHeight: typography.sm * 1.4,
+  },
+  todoCompleted: {
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+  },
+  todoActive: {
+    color: colors.primary,
+    fontWeight: "500",
+  },
+  recentToolsBox: {
+    marginBottom: spacing.md,
+  },
+  recentToolsLabel: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  toolsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  toolBadge: {
+    backgroundColor: colors.backgroundElevated,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  toolBadgeText: {
+    fontSize: typography.xs,
+    color: colors.textSecondary,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  thinkingBox: {
+    backgroundColor: colors.background,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+  },
+  thinkingLabel: {
+    fontSize: typography.xs,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  thinkingText: {
+    fontSize: typography.sm,
+    color: colors.textSecondary,
+    fontStyle: "italic",
+    lineHeight: typography.sm * 1.4,
   },
   sectionLabel: {
     fontSize: typography.sm,

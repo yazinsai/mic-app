@@ -40,7 +40,9 @@ const ACTION_ID = (() => {
   }
   return null;
 })();
-const DEBUG_LOG = args.includes("--debug-log");
+// Debug logging is now enabled by default for all executions
+// Use --no-debug-log to disable if needed
+const DEBUG_LOG = !args.includes("--no-debug-log");
 
 async function recoverStaleActions(): Promise<void> {
   const now = Date.now();
@@ -156,12 +158,14 @@ function formatStreamEvent(event: StreamEvent): { console: string; log: string }
   return { console: consoleOut, log: logOut };
 }
 
-async function claimAction(actionId: string): Promise<boolean> {
+async function claimAction(actionId: string, logFile: string | null): Promise<boolean> {
   try {
     await db.transact(
       db.tx.actions[actionId].update({
         status: "in_progress",
         startedAt: Date.now(),
+        logFile: logFile,
+        progress: null, // Clear any previous progress
       })
     );
     return true;
@@ -203,8 +207,8 @@ ${"=".repeat(60)}
     return logFile;
   }
 
-  // Claim the action
-  const claimed = await claimAction(action.id);
+  // Claim the action and store the log file path
+  const claimed = await claimAction(action.id, logFile);
   if (!claimed) {
     console.log(`Failed to claim action ${action.id}, skipping`);
     return logFile;
@@ -484,16 +488,19 @@ Options:
   --once            Process once and exit (don't poll continuously)
   --limit N         Only process N actions
   --action-id ID    Execute a specific action by ID (for testing)
-  --debug-log       Save FULL Claude output including thinking/reasoning to
-                    workspace/logs/{action-id}-{timestamp}.log
+  --no-debug-log    Disable debug logging (logging is ON by default)
+
+Debug logging saves FULL Claude output including thinking/reasoning to
+workspace/logs/{action-id}-{timestamp}.log. The log file path is stored
+in the action record for the log watcher to tail.
 
 Examples:
   bun run src/action-executor.ts --dry-run --once --limit 1
   bun run src/action-executor.ts --once --limit 5
   bun run src/action-executor.ts
 
-  # Debug a specific action with full output logging
-  bun run src/action-executor.ts --action-id abc123 --debug-log
+  # Execute a specific action
+  bun run src/action-executor.ts --action-id abc123
 `);
 }
 

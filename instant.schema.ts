@@ -63,6 +63,12 @@ const _schema = i.schema({
 
       // URL to deployed app (e.g., dokku deployment)
       deployUrl: i.string().optional(),
+
+      // Live progress from log watcher: JSON with currentTask, todos, recentTools, etc.
+      progress: i.string().optional(),
+
+      // Path to debug log file (for log watcher to tail)
+      logFile: i.string().optional(),
     }),
   },
   rooms: {},
