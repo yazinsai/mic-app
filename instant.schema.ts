@@ -86,6 +86,9 @@ const _schema = i.schema({
 
       // Prompt versioning
       promptVersionId: i.string().indexed().optional(),
+
+      // Claude session ID for resuming conversations with --resume flag
+      sessionId: i.string().optional(),
     }),
     promptVersions: i.entity({
       version: i.string().unique().indexed(), // Hash-based version ID (first 12 chars of SHA256)

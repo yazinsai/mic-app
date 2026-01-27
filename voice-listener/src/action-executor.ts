@@ -112,6 +112,7 @@ interface StreamEvent {
   };
   result?: unknown;
   subtype?: string;
+  session_id?: string;
 }
 
 function formatStreamEvent(event: StreamEvent): { console: string; log: string } {
@@ -188,6 +189,167 @@ async function claimAction(actionId: string, logFile: string | null): Promise<bo
   }
 }
 
+interface ClaudeExecutionResult {
+  success: boolean;
+  sessionId?: string;
+  exitCode: number;
+  stderr: string;
+  toolsUsedCount: number;
+  wasCancelled: boolean;
+}
+
+// Run Claude Code and capture session ID from stream-json output
+async function runClaudeSession(
+  cmd: string[],
+  projectDir: string,
+  logFile: string | null,
+  action: Action,
+  onCancel: () => void,
+): Promise<ClaudeExecutionResult> {
+  const proc = spawn({
+    cmd,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    cwd: projectDir,
+  });
+
+  console.log(`Process spawned, PID: ${proc.pid}`);
+
+  // Close stdin since we're using --resume for feedback, not stdin injection
+  proc.stdin.end();
+
+  let sessionId: string | undefined;
+  let toolsUsedCount = 0;
+  let wasCancelled = false;
+
+  // Polling function to check for cancellation requests
+  const pollForCancellation = async () => {
+    try {
+      const result = await db.query({
+        actions: { $: { where: { id: action.id } } },
+      });
+      const currentAction = (result.actions as Action[])?.[0];
+      if (!currentAction) return;
+
+      if (currentAction.cancelRequested) {
+        console.log(`\nCancellation requested for action ${action.id}`);
+        wasCancelled = true;
+        proc.kill("SIGTERM");
+        onCancel();
+      }
+    } catch (error) {
+      console.error("Polling error:", error);
+    }
+  };
+
+  // Start polling interval for cancellation (every 3 seconds)
+  const pollInterval = setInterval(pollForCancellation, 3000);
+
+  // Stream output and capture for log
+  const decoder = new TextDecoder();
+  const reader = proc.stdout.getReader();
+  let buffer = "";
+
+  console.log("Starting to read stdout...");
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      console.log("Stdout stream ended");
+      break;
+    }
+    const chunk = decoder.decode(value);
+
+    if (logFile) {
+      // Parse stream-json format line by line
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event: StreamEvent = JSON.parse(line);
+          // Count tool invocations
+          if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
+            toolsUsedCount++;
+          }
+          // Capture session ID from result event
+          if (event.type === "result" && event.session_id) {
+            sessionId = event.session_id;
+            console.log(`Captured session ID: ${sessionId}`);
+          }
+          const formatted = formatStreamEvent(event);
+          if (formatted.console) {
+            process.stdout.write(formatted.console);
+          }
+          if (formatted.log) {
+            await appendFile(logFile, formatted.log);
+          }
+        } catch {
+          // Not valid JSON, just output as-is
+          process.stdout.write(line + "\n");
+          await appendFile(logFile, line + "\n");
+        }
+      }
+    } else {
+      // Plain text mode
+      process.stdout.write(chunk);
+    }
+  }
+
+  // Process remaining buffer
+  if (logFile && buffer.trim()) {
+    try {
+      const event: StreamEvent = JSON.parse(buffer);
+      // Capture session ID from result event
+      if (event.type === "result" && event.session_id) {
+        sessionId = event.session_id;
+        console.log(`Captured session ID: ${sessionId}`);
+      }
+      const formatted = formatStreamEvent(event);
+      if (formatted.console) {
+        process.stdout.write(formatted.console);
+      }
+      if (formatted.log) {
+        await appendFile(logFile, formatted.log);
+      }
+    } catch {
+      process.stdout.write(buffer);
+      await appendFile(logFile, buffer);
+    }
+  }
+
+  const stderr = await new Response(proc.stderr).text();
+  const exitCode = await proc.exited;
+
+  // Stop polling
+  clearInterval(pollInterval);
+
+  if (logFile) {
+    await appendFile(logFile, `\n\n=== EXIT ===\nCode: ${exitCode}\nStderr: ${stderr || "(none)"}\nCancelled: ${wasCancelled}\nSession ID: ${sessionId || "(none)"}\n`);
+  }
+
+  return {
+    success: exitCode === 0 && !wasCancelled,
+    sessionId,
+    exitCode,
+    stderr,
+    toolsUsedCount,
+    wasCancelled,
+  };
+}
+
+// Fetch the latest action state from DB
+async function fetchAction(actionId: string): Promise<Action | null> {
+  const result = await db.query({
+    actions: { $: { where: { id: actionId } } },
+  });
+  const actions = result.actions as Action[] | undefined;
+  return actions?.[0] ?? null;
+}
+
 async function executeAction(action: Action): Promise<string | null> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`Executing action: [${action.type.toUpperCase()}] ${action.title}`);
@@ -251,7 +413,8 @@ ${"=".repeat(60)}
 
   // Track execution metrics
   const executionStartTime = Date.now();
-  let toolsUsedCount = 0;
+  let totalToolsUsed = 0;
+  let wasCancelled = false;
 
   try {
     // Use stream-json for debug logging to capture thinking/reasoning
@@ -271,146 +434,23 @@ ${"=".repeat(60)}
       cmd.push("--verbose");
     }
 
-    const proc = spawn({
+    console.log(`Spawning: ${cmd.join(" ").slice(0, 100)}...`);
+    console.log(`Working directory: ${projectDir}`);
+
+    // Run initial execution
+    const initialResult = await runClaudeSession(
       cmd,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd: projectDir,
-    });
+      projectDir,
+      logFile,
+      action,
+      () => { wasCancelled = true; }
+    );
 
-    // Track user messages we've already injected (count only user messages)
-    const initialMessages: ThreadMessage[] = action.messages ? JSON.parse(action.messages) : [];
-    let lastSeenUserMessageCount = initialMessages.filter((m) => m.role === "user").length;
-    let wasCancelled = false;
+    totalToolsUsed += initialResult.toolsUsedCount;
 
-    // Polling function to check for new messages and cancellation requests
-    const pollForUpdates = async () => {
-      try {
-        const result = await db.query({
-          actions: { $: { where: { id: action.id } } },
-        });
-        const currentAction = (result.actions as Action[])?.[0];
-        if (!currentAction) return;
-
-        // Check for cancellation request
-        if (currentAction.cancelRequested) {
-          console.log(`\nCancellation requested for action ${action.id}`);
-          wasCancelled = true;
-          proc.kill("SIGTERM");
-          return;
-        }
-
-        // Check for new user messages to inject
-        const messages: ThreadMessage[] = currentAction.messages
-          ? JSON.parse(currentAction.messages)
-          : [];
-        const userMessages = messages.filter((m) => m.role === "user");
-
-        if (userMessages.length > lastSeenUserMessageCount) {
-          // New user message(s) found - inject into stdin
-          const newMessages = userMessages.slice(lastSeenUserMessageCount);
-          for (const msg of newMessages) {
-            const injection = `\n[USER FEEDBACK]: ${msg.content}\n`;
-            console.log(`\nInjecting user feedback: ${msg.content.slice(0, 100)}...`);
-            if (logFile) {
-              await appendFile(logFile, `\n=== INJECTED USER FEEDBACK ===\n${msg.content}\n===\n`);
-            }
-            proc.stdin.write(injection);
-          }
-          lastSeenUserMessageCount = userMessages.length;
-        }
-      } catch (error) {
-        // Polling errors are non-fatal, just log them
-        console.error("Polling error:", error);
-      }
-    };
-
-    // Start polling interval (every 3 seconds)
-    const pollInterval = setInterval(pollForUpdates, 3000);
-
-    // Stream output and capture for log
-    const decoder = new TextDecoder();
-    const reader = proc.stdout.getReader();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value);
-
-      if (DEBUG_LOG) {
-        // Parse stream-json format line by line
-        buffer += chunk;
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line);
-            // Count tool invocations
-            if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
-              toolsUsedCount++;
-            }
-            const formatted = formatStreamEvent(event);
-            if (formatted.console) {
-              process.stdout.write(formatted.console);
-            }
-            if (logFile && formatted.log) {
-              await appendFile(logFile, formatted.log);
-            }
-          } catch {
-            // Not valid JSON, just output as-is
-            process.stdout.write(line + "\n");
-            if (logFile) {
-              await appendFile(logFile, line + "\n");
-            }
-          }
-        }
-      } else {
-        // Plain text mode
-        process.stdout.write(chunk);
-        if (logFile) {
-          await appendFile(logFile, chunk);
-        }
-      }
-    }
-
-    // Process remaining buffer
-    if (DEBUG_LOG && buffer.trim()) {
-      try {
-        const event = JSON.parse(buffer);
-        const formatted = formatStreamEvent(event);
-        if (formatted.console) {
-          process.stdout.write(formatted.console);
-        }
-        if (logFile && formatted.log) {
-          await appendFile(logFile, formatted.log);
-        }
-      } catch {
-        process.stdout.write(buffer);
-        if (logFile) {
-          await appendFile(logFile, buffer);
-        }
-      }
-    }
-
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
-
-    // Stop polling
-    clearInterval(pollInterval);
-
-    if (logFile) {
-      await appendFile(logFile, `\n\n=== EXIT ===\nCode: ${exitCode}\nStderr: ${stderr || "(none)"}\nCancelled: ${wasCancelled}\n`);
-    }
-
-    // Calculate execution duration
-    const durationMs = Date.now() - executionStartTime;
-
-    if (wasCancelled) {
+    if (initialResult.wasCancelled) {
       console.log(`\nAction ${action.id} was cancelled`);
+      const durationMs = Date.now() - executionStartTime;
       const { category } = classifyError(0, "", true);
       await db.transact(
         db.tx.actions[action.id].update({
@@ -418,51 +458,306 @@ ${"=".repeat(60)}
           cancelRequested: null,
           completedAt: Date.now(),
           durationMs,
-          toolsUsed: toolsUsedCount,
+          toolsUsed: totalToolsUsed,
           errorCategory: category,
+          sessionId: initialResult.sessionId ?? null,
         })
       );
-    } else if (exitCode !== 0) {
-      console.error(`\nClaude exited with code ${exitCode}`);
-      if (stderr) console.error("stderr:", stderr);
+      return logFile;
+    }
 
-      const { category } = classifyError(exitCode, stderr, false);
+    if (!initialResult.success) {
+      console.error(`\nClaude exited with code ${initialResult.exitCode}`);
+      if (initialResult.stderr) console.error("stderr:", initialResult.stderr);
+
+      const durationMs = Date.now() - executionStartTime;
+      const { category } = classifyError(initialResult.exitCode, initialResult.stderr, false);
       await db.transact(
         db.tx.actions[action.id].update({
           status: "failed",
-          errorMessage: `Exit code ${exitCode}: ${stderr.slice(0, 500)}`,
+          errorMessage: `Exit code ${initialResult.exitCode}: ${initialResult.stderr.slice(0, 500)}`,
           completedAt: Date.now(),
           durationMs,
-          toolsUsed: toolsUsedCount,
+          toolsUsed: totalToolsUsed,
           errorCategory: category,
+          sessionId: initialResult.sessionId ?? null,
+        })
+      );
+      return logFile;
+    }
+
+    // Store session ID for potential feedback continuation
+    let sessionId = initialResult.sessionId;
+
+    // Save session ID to DB
+    if (sessionId) {
+      await db.transact(
+        db.tx.actions[action.id].update({
+          sessionId,
+        })
+      );
+    }
+
+    // Track user messages we've already processed
+    const initialMessages: ThreadMessage[] = action.messages ? JSON.parse(action.messages) : [];
+    let lastSeenUserMessageCount = initialMessages.filter((m) => m.role === "user").length;
+
+    // Enter feedback loop: check for new user messages and continue with --resume
+    console.log(`\nEntering feedback loop for action ${action.id}...`);
+
+    while (true) {
+      // Update status to awaiting_feedback
+      await db.transact(
+        db.tx.actions[action.id].update({
+          status: "awaiting_feedback",
+        })
+      );
+
+      // Wait a bit before checking for feedback
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // Fetch latest action state
+      const currentAction = await fetchAction(action.id);
+      if (!currentAction) {
+        console.log(`Action ${action.id} not found, exiting feedback loop`);
+        break;
+      }
+
+      // Check for cancellation
+      if (currentAction.cancelRequested) {
+        console.log(`\nCancellation requested for action ${action.id}`);
+        wasCancelled = true;
+        const durationMs = Date.now() - executionStartTime;
+        const { category } = classifyError(0, "", true);
+        await db.transact(
+          db.tx.actions[action.id].update({
+            status: "cancelled",
+            cancelRequested: null,
+            completedAt: Date.now(),
+            durationMs,
+            toolsUsed: totalToolsUsed,
+            errorCategory: category,
+          })
+        );
+        return logFile;
+      }
+
+      // Check for new user messages
+      const messages: ThreadMessage[] = currentAction.messages
+        ? JSON.parse(currentAction.messages)
+        : [];
+      const userMessages = messages.filter((m) => m.role === "user");
+
+      if (userMessages.length <= lastSeenUserMessageCount) {
+        // No new feedback - check if we should continue waiting or complete
+        // Wait up to 30 seconds for feedback before marking complete
+        const waitStartTime = Date.now();
+        const FEEDBACK_WAIT_TIMEOUT = 30000; // 30 seconds
+        let foundFeedback = false;
+
+        while (Date.now() - waitStartTime < FEEDBACK_WAIT_TIMEOUT) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
+          const refreshedAction = await fetchAction(action.id);
+          if (!refreshedAction) break;
+
+          if (refreshedAction.cancelRequested) {
+            console.log(`\nCancellation requested for action ${action.id}`);
+            wasCancelled = true;
+            const durationMs = Date.now() - executionStartTime;
+            const { category } = classifyError(0, "", true);
+            await db.transact(
+              db.tx.actions[action.id].update({
+                status: "cancelled",
+                cancelRequested: null,
+                completedAt: Date.now(),
+                durationMs,
+                toolsUsed: totalToolsUsed,
+                errorCategory: category,
+              })
+            );
+            return logFile;
+          }
+
+          const refreshedMessages: ThreadMessage[] = refreshedAction.messages
+            ? JSON.parse(refreshedAction.messages)
+            : [];
+          const refreshedUserMessages = refreshedMessages.filter((m) => m.role === "user");
+
+          if (refreshedUserMessages.length > lastSeenUserMessageCount) {
+            foundFeedback = true;
+            break;
+          }
+        }
+
+        if (!foundFeedback) {
+          // No feedback received within timeout, mark as completed
+          console.log(`\nNo feedback received, marking action ${action.id} as completed`);
+          break;
+        }
+
+        // Re-fetch action to get the new messages
+        const actionWithFeedback = await fetchAction(action.id);
+        if (!actionWithFeedback) break;
+
+        const newMessages: ThreadMessage[] = actionWithFeedback.messages
+          ? JSON.parse(actionWithFeedback.messages)
+          : [];
+        const newUserMessages = newMessages.filter((m) => m.role === "user");
+
+        if (newUserMessages.length <= lastSeenUserMessageCount) {
+          break;
+        }
+      }
+
+      // Process new feedback
+      const feedbackAction = await fetchAction(action.id);
+      if (!feedbackAction) break;
+
+      const feedbackMessages: ThreadMessage[] = feedbackAction.messages
+        ? JSON.parse(feedbackAction.messages)
+        : [];
+      const feedbackUserMessages = feedbackMessages.filter((m) => m.role === "user");
+      const newFeedback = feedbackUserMessages.slice(lastSeenUserMessageCount);
+
+      if (newFeedback.length === 0) {
+        break;
+      }
+
+      console.log(`\nProcessing ${newFeedback.length} new feedback message(s)...`);
+
+      // Update status back to in_progress
+      await db.transact(
+        db.tx.actions[action.id].update({
+          status: "in_progress",
+        })
+      );
+
+      for (const msg of newFeedback) {
+        console.log(`\nProcessing feedback: ${msg.content.slice(0, 100)}...`);
+
+        if (logFile) {
+          await appendFile(logFile, `\n\n=== USER FEEDBACK ===\n${msg.content}\n=== RESUMING SESSION ===\n`);
+        }
+
+        if (!sessionId) {
+          console.log(`No session ID available, cannot resume conversation`);
+          // Append assistant message indicating we can't continue
+          feedbackMessages.push({
+            role: "assistant",
+            content: "Unable to continue conversation: no session ID from previous execution.",
+            timestamp: Date.now(),
+          });
+          await db.transact(
+            db.tx.actions[action.id].update({
+              messages: JSON.stringify(feedbackMessages),
+            })
+          );
+          break;
+        }
+
+        // Build resume command with --resume flag
+        const resumeCmd = [
+          "claude",
+          "--resume",
+          sessionId,
+          "-p",
+          msg.content,
+          "--dangerously-skip-permissions",
+          "--output-format",
+          outputFormat,
+        ];
+
+        if (DEBUG_LOG) {
+          resumeCmd.push("--verbose");
+        }
+
+        console.log(`Resuming session: ${sessionId}`);
+
+        // Run continuation
+        const continueResult = await runClaudeSession(
+          resumeCmd,
+          projectDir,
+          logFile,
+          feedbackAction,
+          () => { wasCancelled = true; }
+        );
+
+        totalToolsUsed += continueResult.toolsUsedCount;
+
+        if (continueResult.wasCancelled) {
+          wasCancelled = true;
+          break;
+        }
+
+        // Update session ID if we got a new one
+        if (continueResult.sessionId) {
+          sessionId = continueResult.sessionId;
+          await db.transact(
+            db.tx.actions[action.id].update({
+              sessionId,
+            })
+          );
+        }
+
+        if (!continueResult.success) {
+          console.error(`Resume failed with exit code ${continueResult.exitCode}`);
+          // Don't fail the whole action, just log the error
+          feedbackMessages.push({
+            role: "assistant",
+            content: `Error processing feedback: exit code ${continueResult.exitCode}`,
+            timestamp: Date.now(),
+          });
+          await db.transact(
+            db.tx.actions[action.id].update({
+              messages: JSON.stringify(feedbackMessages),
+            })
+          );
+        }
+      }
+
+      if (wasCancelled) {
+        const durationMs = Date.now() - executionStartTime;
+        const { category } = classifyError(0, "", true);
+        await db.transact(
+          db.tx.actions[action.id].update({
+            status: "cancelled",
+            cancelRequested: null,
+            completedAt: Date.now(),
+            durationMs,
+            toolsUsed: totalToolsUsed,
+            errorCategory: category,
+          })
+        );
+        return logFile;
+      }
+
+      lastSeenUserMessageCount = feedbackUserMessages.length;
+    }
+
+    // Mark action as completed
+    console.log(`\nAction ${action.id} completed successfully`);
+    const durationMs = Date.now() - executionStartTime;
+
+    // Check current status - Claude Code may have updated it
+    const finalAction = await fetchAction(action.id);
+    if (finalAction?.status === "in_progress" || finalAction?.status === "awaiting_feedback") {
+      await db.transact(
+        db.tx.actions[action.id].update({
+          status: "completed",
+          completedAt: Date.now(),
+          durationMs,
+          toolsUsed: totalToolsUsed,
         })
       );
     } else {
-      console.log(`\nAction ${action.id} completed successfully`);
-      // Note: Claude Code should update the action with result/deployUrl via InstantDB
-      // We just mark it complete if it hasn't been updated
-      const current = await db.query({
-        actions: { $: { where: { id: action.id } } },
-      });
-      const currentAction = (current.actions as Action[])?.[0];
-      if (currentAction?.status === "in_progress") {
-        await db.transact(
-          db.tx.actions[action.id].update({
-            status: "completed",
-            completedAt: Date.now(),
-            durationMs,
-            toolsUsed: toolsUsedCount,
-          })
-        );
-      } else {
-        // Still update metrics even if status was changed by Claude Code
-        await db.transact(
-          db.tx.actions[action.id].update({
-            durationMs,
-            toolsUsed: toolsUsedCount,
-          })
-        );
-      }
+      // Still update metrics even if status was changed by Claude Code
+      await db.transact(
+        db.tx.actions[action.id].update({
+          durationMs,
+          toolsUsed: totalToolsUsed,
+        })
+      );
     }
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -470,7 +765,6 @@ ${"=".repeat(60)}
     if (logFile) {
       await appendFile(logFile, `\n\n=== ERROR ===\n${errMsg}\n`);
     }
-    // Note: pollInterval may not exist if error occurred before spawn
     const durationMs = Date.now() - executionStartTime;
     const { category } = classifyError(1, errMsg, false);
     await db.transact(
@@ -479,7 +773,7 @@ ${"=".repeat(60)}
         errorMessage: errMsg,
         completedAt: Date.now(),
         durationMs,
-        toolsUsed: toolsUsedCount,
+        toolsUsed: totalToolsUsed,
         errorCategory: category,
       })
     );
