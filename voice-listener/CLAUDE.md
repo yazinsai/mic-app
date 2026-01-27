@@ -70,6 +70,7 @@ bun run src/action-executor.ts --dry-run --once --limit 1
 - `question`: Questions that need answers
 - `command`: Direct commands to execute
 - `idea`: Ideas for products/features
+- `post`: Social media post ideas for drafting
 
 ## Recovery
 

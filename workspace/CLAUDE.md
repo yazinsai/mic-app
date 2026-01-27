@@ -78,6 +78,14 @@ This workspace is used by the voice-to-action system. Claude Code executes actio
      - If deployed, set `deployUrl`
 - **Notes**: Ideas create NEW projects in `workspace/projects/`. This is the only action type that creates new projects.
 
+### `post`
+- **Goal**: Draft social media posts using Typefully
+- **Process**:
+  1. Run `/typefully` with the post content from the action's description
+  2. Create drafts for **both LinkedIn AND Twitter** by default
+  3. Store the draft links or confirmation in the `result` field
+- **Notes**: The user can then review and schedule the drafts in Typefully.
+
 ## File Organization
 
 ### Projects (`workspace/projects/`)

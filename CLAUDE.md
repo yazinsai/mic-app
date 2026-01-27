@@ -71,7 +71,7 @@ bun run execute    # Execution worker
 
 1. Phone records audio → uploads to InstantDB Storage
 2. App transcribes via Groq → saves recording with transcription
-3. **Extraction worker** polls transcriptions → extracts actions (bug/feature/todo/idea)
+3. **Extraction worker** polls transcriptions → extracts actions (bug/feature/todo/idea/post)
 4. **Execution worker** picks up pending actions → spawns Claude Code to implement
 5. Results sync back to app in real-time via InstantDB
 
@@ -477,6 +477,7 @@ When processing any action from InstantDB (bug, feature, todo, idea, etc.):
    - **feature**: Implement the feature
    - **todo**: Complete the task
    - **command**: Execute the command
+   - **post**: Use /typefully to draft social media posts
 4. Write progress/results to the `result` field
 5. Set `status: "completed"` when done
 
@@ -508,7 +509,7 @@ await db.transact(db.tx.actions[actionId].update({ messages: JSON.stringify(upda
 When you see new user messages in the thread, respond by appending an assistant message. This creates a back-and-forth conversation visible in the UI.
 
 The action entity in InstantDB has:
-- `type`: "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea"
+- `type`: "bug" | "feature" | "todo" | "question" | "command" | "idea" | "post"
 - `title`: Brief title
 - `description`: Optional longer description
 - `status`: "pending" | "in_progress" | "completed" | "failed"

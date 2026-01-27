@@ -11,10 +11,10 @@ interface ActionsScreenProps {
 }
 
 type ViewMode = "timeline" | "type" | "status";
-type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
+type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea" | "post";
 type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
-const TYPE_ORDER: ActionType[] = ["idea", "bug", "todo", "feature", "question", "command", "note"];
+const TYPE_ORDER: ActionType[] = ["idea", "bug", "todo", "feature", "question", "command", "note", "post"];
 const TYPE_LABELS: Record<ActionType, string> = {
   bug: "Bugs",
   feature: "Features",
@@ -23,6 +23,7 @@ const TYPE_LABELS: Record<ActionType, string> = {
   question: "Questions",
   command: "Commands",
   idea: "Ideas",
+  post: "Posts",
 };
 
 const STATUS_ORDER: ActionStatus[] = ["in_progress", "pending", "completed", "cancelled", "failed"];
