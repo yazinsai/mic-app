@@ -432,17 +432,35 @@ export default function HomeScreen() {
                   value={feedbackText}
                   onChangeText={setFeedbackText}
                 />
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.submitButton,
-                    !feedbackText.trim() && styles.submitButtonDisabled,
-                    pressed && styles.buttonPressed,
-                  ]}
-                  onPress={handleSubmitFeedback}
-                  disabled={!feedbackText.trim()}
-                >
-                  <Text style={styles.submitButtonText}>Send</Text>
-                </Pressable>
+                <View style={{ alignItems: "flex-end", marginTop: spacing.lg }}>
+                  <Pressable
+                    onPress={handleSubmitFeedback}
+                    disabled={!feedbackText.trim()}
+                    style={({ pressed }) => ({
+                      paddingVertical: spacing.md,
+                      paddingHorizontal: spacing.xl,
+                      backgroundColor: feedbackText.trim() ? colors.primary : colors.backgroundElevated,
+                      borderRadius: radii.lg,
+                      opacity: pressed ? 0.8 : 1,
+                    })}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons
+                        name="send"
+                        size={16}
+                        color={feedbackText.trim() ? colors.white : colors.textMuted}
+                      />
+                      <Text style={{
+                        color: feedbackText.trim() ? colors.white : colors.textMuted,
+                        fontSize: typography.md,
+                        fontWeight: "600",
+                        marginLeft: spacing.sm,
+                      }}>
+                        Send
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
               </View>
             </ScrollView>
             </KeyboardAvoidingView>
@@ -676,6 +694,7 @@ const styles = StyleSheet.create({
   },
   feedbackSection: {
     marginTop: spacing.md,
+    alignItems: "stretch",
   },
   feedbackLabel: {
     fontSize: typography.sm,
@@ -693,18 +712,28 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   submitButton: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.md,
+    flexDirection: "row",
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.xl,
     backgroundColor: colors.primary,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   submitButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   submitButtonText: {
-    color: colors.background,
-    fontSize: typography.base,
+    color: colors.white,
+    fontSize: typography.md,
     fontWeight: "600",
   },
   buttonPressed: {
