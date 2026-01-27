@@ -29,8 +29,22 @@ const semantic = {
   warning: "#f59e0b", // amber-500
 };
 
-// Dark theme tokens (currently the only theme)
-export const colors = {
+// Action type colors (consistent across themes - these are badge colors)
+export const actionTypeColors = {
+  bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
+  feature: { label: "FEATURE", color: "#93c5fd", bg: "#1e3a5f" },
+  todo: { label: "TODO", color: "#86efac", bg: "#14532d" },
+  note: { label: "NOTE", color: "#d1d5db", bg: "#374151" },
+  question: { label: "?", color: "#fcd34d", bg: "#78350f" },
+  command: { label: "CMD", color: "#c4b5fd", bg: "#4c1d95" },
+  idea: { label: "IDEA", color: "#fbbf24", bg: "#92400e" },
+  review: { label: "Review", color: "#fbbf24", bg: "#78350f" },
+} as const;
+
+export type ActionType = keyof typeof actionTypeColors;
+
+// Dark theme tokens
+const darkColors = {
   // Backgrounds
   background: gray[900],
   backgroundElevated: gray[800],
@@ -58,12 +72,70 @@ export const colors = {
   success: semantic.success,
   warning: semantic.warning,
 
+  // Overlays
+  overlay: "rgba(0, 0, 0, 0.7)",
+  overlayLight: "rgba(0, 0, 0, 0.6)",
+  errorBgAlpha: "rgba(239, 68, 68, 0.12)",
+
   // Shadows
   shadow: "#000",
 
   // Constant
   white: "#fff",
 };
+
+// Light theme tokens
+const lightColors = {
+  // Backgrounds
+  background: gray[50],
+  backgroundElevated: "#fff",
+  backgroundPressed: gray[100],
+
+  // Borders
+  border: gray[200],
+  borderLight: gray[300],
+  borderFocused: semantic.primary,
+
+  // Text
+  textPrimary: gray[900],
+  textSecondary: gray[600],
+  textTertiary: gray[500],
+  textMuted: gray[400],
+
+  // Interactive
+  primary: semantic.primary,
+  primaryDark: semantic.primaryDark,
+
+  // Status
+  error: semantic.error,
+  errorLight: semantic.errorLight,
+  errorDark: semantic.errorDark,
+  success: semantic.success,
+  warning: semantic.warning,
+
+  // Overlays
+  overlay: "rgba(0, 0, 0, 0.5)",
+  overlayLight: "rgba(0, 0, 0, 0.4)",
+  errorBgAlpha: "rgba(239, 68, 68, 0.15)",
+
+  // Shadows
+  shadow: gray[400],
+
+  // Constant
+  white: "#fff",
+};
+
+// Theme type
+export type ThemeColors = typeof darkColors;
+
+// Export themes
+export const themes = {
+  dark: darkColors,
+  light: lightColors,
+};
+
+// Default export for backwards compatibility during migration
+export const colors = darkColors;
 
 // Spacing scale (4px base)
 export const spacing = {

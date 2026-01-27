@@ -9,7 +9,8 @@ import Animated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface AudioPlayerProps {
   uri: string;
@@ -24,6 +25,7 @@ function formatTime(seconds: number): string {
 }
 
 export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
+  const colors = useColors();
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -154,6 +156,7 @@ export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
           styles.waveformBar,
           {
             height: barHeight * 36,
+            backgroundColor: colors.textMuted,
           },
         ]}
       />
@@ -161,11 +164,11 @@ export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
   }
 
   return (
-    <View style={styles.container}>
-      {title && <Text style={styles.title} numberOfLines={1}>{title}</Text>}
+    <View style={[styles.container, { backgroundColor: colors.backgroundElevated }]}>
+      {title && <Text style={[styles.title, { color: colors.textTertiary }]} numberOfLines={1}>{title}</Text>}
       <View style={styles.playerRow}>
         <Pressable
-          style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
+          style={({ pressed }) => [styles.playButton, { backgroundColor: colors.primary }, pressed && styles.playButtonPressed]}
           onPress={handlePlayPause}
           disabled={isLoading}
         >
@@ -178,7 +181,7 @@ export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
 
         <GestureDetector gesture={composedGesture}>
           <View style={styles.waveformTouchable} onLayout={onWaveformLayout}>
-            <View style={styles.waveformContainer}>
+            <View style={[styles.waveformContainer, { backgroundColor: colors.background }]}>
               {/* Background waveform (muted) */}
               <View style={styles.waveform}>
                 {bars}
@@ -197,6 +200,7 @@ export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
                           styles.waveformBarActive,
                           {
                             height: barHeight * 36,
+                            backgroundColor: colors.primary,
                           },
                         ]}
                       />
@@ -206,12 +210,12 @@ export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
               </Animated.View>
 
               {/* Playhead indicator */}
-              <Animated.View style={[styles.playhead, progressStyle]} />
+              <Animated.View style={[styles.playhead, { backgroundColor: colors.primary }, progressStyle]} />
             </View>
           </View>
         </GestureDetector>
 
-        <Text style={styles.time}>
+        <Text style={[styles.time, { color: colors.textTertiary }]}>
           {formatTime(position)} / {formatTime(duration)}
         </Text>
       </View>
@@ -221,13 +225,11 @@ export function AudioPlayer({ uri, duration, title }: AudioPlayerProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.md,
     padding: spacing.md,
   },
   title: {
     fontSize: typography.xs,
-    color: colors.textTertiary,
     marginBottom: spacing.sm,
   },
   playerRow: {
@@ -239,7 +241,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -256,7 +257,6 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
     borderRadius: radii.sm,
-    backgroundColor: colors.background,
   },
   waveform: {
     position: "absolute",
@@ -271,7 +271,6 @@ const styles = StyleSheet.create({
   },
   waveformBar: {
     width: 3,
-    backgroundColor: colors.textMuted,
     borderRadius: 1.5,
     opacity: 0.4,
   },
@@ -296,7 +295,6 @@ const styles = StyleSheet.create({
   },
   waveformBarActive: {
     width: 3,
-    backgroundColor: colors.primary,
     borderRadius: 1.5,
   },
   playhead: {
@@ -304,12 +302,10 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 2,
-    backgroundColor: colors.primary,
     marginLeft: -1,
   },
   time: {
     fontSize: typography.xs,
-    color: colors.textTertiary,
     fontVariant: ["tabular-nums"],
     minWidth: 70,
     textAlign: "right",

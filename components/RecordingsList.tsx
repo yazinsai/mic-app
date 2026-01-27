@@ -4,7 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { DeleteConfirmationOverlay } from "./DeleteConfirmationOverlay";
 import { ActionsList } from "./ActionsList";
 import type { Recording } from "@/lib/queue";
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface RecordingsListProps {
   recordings: Recording[];
@@ -45,7 +46,13 @@ function getTime(recording: Recording): string {
   });
 }
 
-function getStatusInfo(status: string, processingStatus?: string | null): { label: string; color: string } | null {
+interface StatusColors {
+  primary: string;
+  error: string;
+  textTertiary: string;
+}
+
+function getStatusInfo(status: string, processingStatus: string | null | undefined, colors: StatusColors): { label: string; color: string } | null {
   if (status === "sent" && !processingStatus) return null;
   if (status === "sent" && processingStatus === "processed") return null;
 
@@ -86,8 +93,9 @@ function RecordingItem({
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
+  const colors = useColors();
   const isFailed = recording.status.includes("failed");
-  const statusInfo = getStatusInfo(recording.status, recording.processingStatus);
+  const statusInfo = getStatusInfo(recording.status, recording.processingStatus, colors);
   const isRetryable = recording.status !== "sent";
   const actions = recording.actions ?? [];
   const hasActions = actions.length > 0;
@@ -120,24 +128,24 @@ function RecordingItem({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
+      style={({ pressed }) => [styles.item, { backgroundColor: colors.backgroundElevated }, pressed && styles.itemPressed]}
       onPress={hasActions ? onToggleExpand : undefined}
       onLongPress={handleLongPress}
     >
       {/* Top row: Title, Duration/Actions count */}
       <View style={styles.itemHeader}>
         <View style={styles.itemTitleContainer}>
-          <Text style={styles.itemTitle} numberOfLines={1}>
+          <Text style={[styles.itemTitle, { color: colors.textPrimary }]} numberOfLines={1}>
             {getTitle(recording)}
           </Text>
-          <Text style={styles.itemTime}>
+          <Text style={[styles.itemTime, { color: colors.textTertiary }]}>
             {getTime(recording)} · {formatDuration(recording.duration)}
           </Text>
         </View>
 
         {hasActions && (
           <View style={styles.actionsIndicator}>
-            <Text style={styles.actionsCount}>{actions.length}</Text>
+            <Text style={[styles.actionsCount, { color: colors.textTertiary }]}>{actions.length}</Text>
             <Ionicons
               name={isExpanded ? "chevron-up" : "chevron-down"}
               size={16}
@@ -151,10 +159,10 @@ function RecordingItem({
       {statusInfo && (
         <View style={styles.statusRow}>
           {statusInfo.label === "Uploading" && (
-            <Text style={styles.statusIcon}>↑</Text>
+            <Text style={[styles.statusIcon, { color: colors.primary }]}>↑</Text>
           )}
           {statusInfo.label === "Extracting actions..." && (
-            <Text style={styles.statusIcon}>⟳</Text>
+            <Text style={[styles.statusIcon, { color: colors.primary }]}>⟳</Text>
           )}
           <Text style={[styles.itemStatus, { color: statusInfo.color }]}>
             {statusInfo.label}
@@ -164,7 +172,7 @@ function RecordingItem({
 
       {/* Transcript snippet - only show when collapsed or no actions */}
       {!isExpanded && !statusInfo && recording.transcription && (
-        <Text style={styles.transcriptSnippet} numberOfLines={2}>
+        <Text style={[styles.transcriptSnippet, { color: colors.textSecondary }]} numberOfLines={2}>
           {recording.transcription}
         </Text>
       )}
@@ -223,6 +231,7 @@ export function RecordingsList({
   onDelete,
   onShare,
 }: RecordingsListProps) {
+  const colors = useColors();
   const [recordingToDelete, setRecordingToDelete] = useState<Recording | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -241,8 +250,8 @@ export function RecordingsList({
   if (recordings.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyTitle}>No recordings yet</Text>
-        <Text style={styles.emptySubtitle}>
+        <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No recordings yet</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.textTertiary }]}>
           Tap the record button to get started
         </Text>
       </View>
@@ -274,8 +283,8 @@ export function RecordingsList({
           />
         )}
         renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionHeaderText}>{section.title}</Text>
+          <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
+            <Text style={[styles.sectionHeaderText, { color: colors.textTertiary }]}>{section.title}</Text>
           </View>
         )}
         ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
@@ -299,14 +308,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   sectionHeader: {
-    backgroundColor: colors.background,
     paddingTop: spacing.xl,
     paddingBottom: spacing.md,
     marginHorizontal: -spacing.lg,
     paddingHorizontal: spacing.lg,
   },
   sectionHeaderText: {
-    color: colors.textTertiary,
     fontSize: typography.xs,
     fontWeight: typography.semibold,
     letterSpacing: 0.5,
@@ -319,20 +326,17 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   emptyTitle: {
-    color: colors.textPrimary,
     fontSize: typography.lg,
     fontWeight: typography.medium,
     marginBottom: spacing.sm,
   },
   emptySubtitle: {
-    color: colors.textTertiary,
     fontSize: typography.base,
     textAlign: "center",
   },
   item: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.lg,
   },
   itemSeparator: {
@@ -351,12 +355,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   itemTitle: {
-    color: colors.textPrimary,
     fontSize: typography.base,
     fontWeight: typography.semibold,
   },
   itemTime: {
-    color: colors.textTertiary,
     fontSize: typography.xs,
     marginTop: 2,
   },
@@ -366,7 +368,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   actionsCount: {
-    color: colors.textTertiary,
     fontSize: typography.sm,
     fontWeight: typography.medium,
   },
@@ -380,7 +381,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   statusIcon: {
-    color: colors.primary,
     fontSize: typography.sm,
   },
   itemStatus: {
@@ -388,7 +388,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.medium,
   },
   transcriptSnippet: {
-    color: colors.textSecondary,
     fontSize: typography.sm,
     lineHeight: typography.sm * 1.5,
     marginTop: spacing.sm,

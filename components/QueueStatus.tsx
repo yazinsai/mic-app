@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface QueueStatusProps {
   pendingCount: number;
@@ -13,6 +14,7 @@ export function QueueStatus({
   failedCount,
   onPress,
 }: QueueStatusProps) {
+  const colors = useColors();
   const { isOnline } = useNetworkStatus();
 
   if (pendingCount === 0 && failedCount === 0) {
@@ -22,22 +24,22 @@ export function QueueStatus({
   return (
     <Pressable onPress={onPress} style={styles.container}>
       {!isOnline && (
-        <View style={styles.offlineBadge}>
-          <Text style={styles.offlineText}>Offline</Text>
+        <View style={[styles.offlineBadge, { backgroundColor: colors.warning }]}>
+          <Text style={[styles.offlineText, { color: colors.white }]}>Offline</Text>
         </View>
       )}
 
       {pendingCount > 0 && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>
+        <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+          <Text style={[styles.badgeText, { color: colors.white }]}>
             {pendingCount} processing
           </Text>
         </View>
       )}
 
       {failedCount > 0 && (
-        <View style={[styles.badge, styles.failedBadge]}>
-          <Text style={styles.badgeText}>
+        <View style={[styles.badge, { backgroundColor: colors.error }]}>
+          <Text style={[styles.badgeText, { color: colors.white }]}>
             {failedCount} failed
           </Text>
         </View>
@@ -54,27 +56,20 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   badge: {
-    backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm - 2,
     borderRadius: radii.xl,
   },
-  failedBadge: {
-    backgroundColor: colors.error,
-  },
   offlineBadge: {
-    backgroundColor: colors.warning,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm - 2,
     borderRadius: radii.xl,
   },
   badgeText: {
-    color: colors.white,
     fontSize: typography.sm,
     fontWeight: typography.semibold,
   },
   offlineText: {
-    color: colors.white,
     fontSize: typography.sm,
     fontWeight: typography.semibold,
   },

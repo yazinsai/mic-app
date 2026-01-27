@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { View, Text, SectionList, StyleSheet, Pressable, Alert, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionItem, type Action } from "./ActionItem";
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface ActionsScreenProps {
   actions: Action[];
@@ -132,9 +133,10 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 function ActionCard({ action, onPress }: { action: Action; onPress?: () => void }) {
+  const colors = useColors();
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [styles.card, { backgroundColor: colors.backgroundElevated }, pressed && styles.cardPressed]}
       onPress={onPress}
       onLongPress={() => {
         Alert.alert(
@@ -145,7 +147,7 @@ function ActionCard({ action, onPress }: { action: Action; onPress?: () => void 
       }}
     >
       <ActionItem action={action} />
-      <Text style={styles.cardTime}>{formatRelativeTime(action.extractedAt)}</Text>
+      <Text style={[styles.cardTime, { color: colors.textMuted }]}>{formatRelativeTime(action.extractedAt)}</Text>
     </Pressable>
   );
 }
@@ -156,10 +158,11 @@ interface ViewToggleProps {
 }
 
 function ViewToggle({ value, onChange }: ViewToggleProps) {
+  const colors = useColors();
   return (
-    <View style={styles.toggleContainer}>
+    <View style={[styles.toggleContainer, { backgroundColor: colors.backgroundElevated }]}>
       <Pressable
-        style={[styles.toggleOption, value === "timeline" && styles.toggleOptionActive]}
+        style={[styles.toggleOption, value === "timeline" && { backgroundColor: colors.background }]}
         onPress={() => onChange("timeline")}
       >
         <Ionicons
@@ -167,12 +170,12 @@ function ViewToggle({ value, onChange }: ViewToggleProps) {
           size={16}
           color={value === "timeline" ? colors.primary : colors.textTertiary}
         />
-        <Text style={[styles.toggleText, value === "timeline" && styles.toggleTextActive]}>
+        <Text style={[styles.toggleText, { color: colors.textTertiary }, value === "timeline" && { color: colors.primary }]}>
           Timeline
         </Text>
       </Pressable>
       <Pressable
-        style={[styles.toggleOption, value === "type" && styles.toggleOptionActive]}
+        style={[styles.toggleOption, value === "type" && { backgroundColor: colors.background }]}
         onPress={() => onChange("type")}
       >
         <Ionicons
@@ -180,12 +183,12 @@ function ViewToggle({ value, onChange }: ViewToggleProps) {
           size={16}
           color={value === "type" ? colors.primary : colors.textTertiary}
         />
-        <Text style={[styles.toggleText, value === "type" && styles.toggleTextActive]}>
+        <Text style={[styles.toggleText, { color: colors.textTertiary }, value === "type" && { color: colors.primary }]}>
           By Type
         </Text>
       </Pressable>
       <Pressable
-        style={[styles.toggleOption, value === "status" && styles.toggleOptionActive]}
+        style={[styles.toggleOption, value === "status" && { backgroundColor: colors.background }]}
         onPress={() => onChange("status")}
       >
         <Ionicons
@@ -193,7 +196,7 @@ function ViewToggle({ value, onChange }: ViewToggleProps) {
           size={16}
           color={value === "status" ? colors.primary : colors.textTertiary}
         />
-        <Text style={[styles.toggleText, value === "status" && styles.toggleTextActive]}>
+        <Text style={[styles.toggleText, { color: colors.textTertiary }, value === "status" && { color: colors.primary }]}>
           By Status
         </Text>
       </Pressable>
@@ -202,6 +205,7 @@ function ViewToggle({ value, onChange }: ViewToggleProps) {
 }
 
 export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
+  const colors = useColors();
   const [viewMode, setViewMode] = useState<ViewMode>("timeline");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -233,11 +237,11 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
   if (actions.length === 0) {
     return (
       <View style={styles.empty}>
-        <View style={styles.emptyIcon}>
+        <View style={[styles.emptyIcon, { backgroundColor: colors.backgroundElevated }]}>
           <Ionicons name="flash-outline" size={48} color={colors.textTertiary} />
         </View>
-        <Text style={styles.emptyTitle}>No actions yet</Text>
-        <Text style={styles.emptySubtitle}>
+        <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No actions yet</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.textTertiary }]}>
           Record a voice note and actions{"\n"}will be extracted automatically
         </Text>
       </View>
@@ -248,10 +252,10 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrapper}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: colors.backgroundElevated }]}>
           <Ionicons name="search" size={18} color={colors.textMuted} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.textPrimary }]}
             placeholder="Search actions..."
             placeholderTextColor={colors.textMuted}
             value={searchQuery}
@@ -273,7 +277,7 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
 
       {filteredActions.length === 0 ? (
         <View style={styles.noResults}>
-          <Text style={styles.noResultsText}>No actions match "{searchQuery}"</Text>
+          <Text style={[styles.noResultsText, { color: colors.textTertiary }]}>No actions match "{searchQuery}"</Text>
         </View>
       ) : (
         <SectionList
@@ -283,17 +287,17 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
             <ActionCard action={item} onPress={() => onActionPress?.(item)} />
           )}
           renderSectionHeader={({ section }) => (
-            <View style={[styles.sectionHeader, section.isRunning && styles.sectionHeaderRunning]}>
+            <View style={[styles.sectionHeader, { backgroundColor: colors.background }, section.isRunning && styles.sectionHeaderRunning]}>
               {section.isRunning && (
-                <View style={styles.runningIndicator}>
-                  <View style={styles.runningDot} />
+                <View style={[styles.runningIndicator, { backgroundColor: colors.primary + "30" }]}>
+                  <View style={[styles.runningDot, { backgroundColor: colors.primary }]} />
                 </View>
               )}
-              <Text style={[styles.sectionHeaderText, section.isRunning && styles.sectionHeaderTextRunning]}>
+              <Text style={[styles.sectionHeaderText, { color: colors.textSecondary }, section.isRunning && { color: colors.primary }]}>
                 {section.title}
               </Text>
-              <View style={[styles.sectionBadge, section.isRunning && styles.sectionBadgeRunning]}>
-                <Text style={[styles.sectionBadgeText, section.isRunning && styles.sectionBadgeTextRunning]}>
+              <View style={[styles.sectionBadge, { backgroundColor: colors.backgroundElevated }, section.isRunning && { backgroundColor: colors.primary + "20" }]}>
+                <Text style={[styles.sectionBadgeText, { color: colors.textTertiary }, section.isRunning && { color: colors.primary }]}>
                   {section.data.length}
                 </Text>
               </View>
@@ -322,7 +326,6 @@ const styles = StyleSheet.create({
   searchInputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
   },
@@ -333,7 +336,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.md,
     fontSize: typography.base,
-    color: colors.textPrimary,
   },
   clearButton: {
     padding: spacing.xs,
@@ -342,7 +344,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.lg,
     padding: 4,
   },
@@ -356,22 +357,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
   },
-  toggleOptionActive: {
-    backgroundColor: colors.background,
-  },
   toggleText: {
     fontSize: typography.sm,
     fontWeight: "500",
-    color: colors.textTertiary,
-  },
-  toggleTextActive: {
-    color: colors.primary,
   },
   list: {
     paddingBottom: 160,
   },
   sectionHeader: {
-    backgroundColor: colors.background,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -383,19 +376,14 @@ const styles = StyleSheet.create({
     // Running section has subtle highlight
   },
   sectionHeaderText: {
-    color: colors.textSecondary,
     fontSize: typography.sm,
     fontWeight: typography.semibold,
     letterSpacing: 0.3,
-  },
-  sectionHeaderTextRunning: {
-    color: colors.primary,
   },
   runningIndicator: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.primary + "30",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -403,24 +391,15 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.primary,
   },
   sectionBadge: {
-    backgroundColor: colors.backgroundElevated,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radii.sm,
   },
-  sectionBadgeRunning: {
-    backgroundColor: colors.primary + "20",
-  },
   sectionBadgeText: {
-    color: colors.textTertiary,
     fontSize: typography.xs,
     fontWeight: typography.medium,
-  },
-  sectionBadgeTextRunning: {
-    color: colors.primary,
   },
   separator: {
     height: spacing.sm,
@@ -429,7 +408,6 @@ const styles = StyleSheet.create({
     height: spacing.sm,
   },
   card: {
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.lg,
     overflow: "hidden",
   },
@@ -437,7 +415,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   cardTime: {
-    color: colors.textMuted,
     fontSize: typography.xs,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
@@ -454,19 +431,16 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.backgroundElevated,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.lg,
   },
   emptyTitle: {
-    color: colors.textPrimary,
     fontSize: typography.lg,
     fontWeight: typography.medium,
     marginBottom: spacing.sm,
   },
   emptySubtitle: {
-    color: colors.textTertiary,
     fontSize: typography.base,
     textAlign: "center",
     lineHeight: typography.base * 1.5,
@@ -478,7 +452,6 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
   },
   noResultsText: {
-    color: colors.textTertiary,
     fontSize: typography.base,
     textAlign: "center",
   },

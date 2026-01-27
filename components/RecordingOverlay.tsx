@@ -18,7 +18,8 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Waveform } from "./Waveform";
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface RecordingOverlayProps {
   isVisible: boolean;
@@ -50,6 +51,7 @@ export function RecordingOverlay({
   onStop,
   onDelete,
 }: RecordingOverlayProps) {
+  const colors = useColors();
   const recordingDotOpacity = useSharedValue(1);
   const buttonScale = useSharedValue(1);
 
@@ -99,11 +101,11 @@ export function RecordingOverlay({
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(200)}
-      style={styles.overlay}
+      style={[styles.overlay, { backgroundColor: colors.background }]}
     >
       <View style={styles.topSection}>
         <View style={styles.speechIndicator}>
-          <Text style={styles.speechText}>
+          <Text style={[styles.speechText, { color: colors.primary }]}>
             {isPaused ? "Paused" : "Audio"}
           </Text>
         </View>
@@ -121,8 +123,8 @@ export function RecordingOverlay({
 
       <View style={styles.bottomSection}>
         <View style={styles.durationContainer}>
-          <Animated.View style={[styles.recordingDot, dotAnimatedStyle]} />
-          <Text style={styles.durationText}>{formatDuration(duration)}</Text>
+          <Animated.View style={[styles.recordingDot, { backgroundColor: colors.error }, dotAnimatedStyle]} />
+          <Text style={[styles.durationText, { color: colors.textPrimary }]}>{formatDuration(duration)}</Text>
         </View>
 
         <View style={styles.controls}>
@@ -131,7 +133,7 @@ export function RecordingOverlay({
             disabled={isSaving}
             style={styles.textButton}
           >
-            <Text style={[styles.textButtonLabel, styles.deleteLabel]}>
+            <Text style={[styles.textButtonLabel, { color: colors.error }]}>
               Delete
             </Text>
           </Pressable>
@@ -142,19 +144,20 @@ export function RecordingOverlay({
               disabled={isSaving}
               style={({ pressed }) => [
                 styles.mainButton,
+                { backgroundColor: colors.backgroundElevated, borderColor: colors.borderLight },
                 pressed && styles.buttonPressed,
                 isSaving && styles.buttonDisabled,
               ]}
             >
-              <View style={styles.mainButtonInner}>
+              <View style={[styles.mainButtonInner, { backgroundColor: colors.error }]}>
                 {isSaving ? (
                   <ActivityIndicator color={colors.white} size="small" />
                 ) : isPaused ? (
-                  <View style={styles.playIcon} />
+                  <View style={[styles.playIcon, { borderLeftColor: colors.white }]} />
                 ) : (
                   <View style={styles.pauseIcon}>
-                    <View style={styles.pauseBar} />
-                    <View style={styles.pauseBar} />
+                    <View style={[styles.pauseBar, { backgroundColor: colors.white }]} />
+                    <View style={[styles.pauseBar, { backgroundColor: colors.white }]} />
                   </View>
                 )}
               </View>
@@ -166,7 +169,7 @@ export function RecordingOverlay({
             disabled={isSaving}
             style={styles.textButton}
           >
-            <Text style={[styles.textButtonLabel, styles.doneLabel]}>
+            <Text style={[styles.textButtonLabel, { color: colors.primary }]}>
               {isSaving ? "Saving..." : "Done"}
             </Text>
           </Pressable>
@@ -179,7 +182,6 @@ export function RecordingOverlay({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background,
     justifyContent: "space-between",
     paddingTop: 60,
     paddingBottom: 40,
@@ -193,7 +195,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   speechText: {
-    color: colors.primary,
     fontSize: typography.base,
     fontWeight: typography.medium,
   },
@@ -211,12 +212,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: colors.backgroundElevated,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.border,
   },
   audioBadgeIcon: {
     width: 16,
@@ -231,7 +230,6 @@ const styles = StyleSheet.create({
   },
   soundBar: {
     width: 2,
-    backgroundColor: colors.primary,
     borderRadius: 1,
   },
   soundBar1: {
@@ -244,7 +242,6 @@ const styles = StyleSheet.create({
     height: 6,
   },
   audioBadgeText: {
-    color: colors.textSecondary,
     fontSize: typography.sm,
     fontWeight: typography.medium,
   },
@@ -257,10 +254,8 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.error,
   },
   durationText: {
-    color: colors.textPrimary,
     fontSize: 32,
     fontWeight: typography.medium,
     fontVariant: ["tabular-nums"],
@@ -282,12 +277,6 @@ const styles = StyleSheet.create({
     fontSize: typography.lg,
     fontWeight: typography.medium,
   },
-  deleteLabel: {
-    color: colors.error,
-  },
-  doneLabel: {
-    color: colors.primary,
-  },
   mainButtonContainer: {
     alignItems: "center",
     justifyContent: "center",
@@ -296,17 +285,14 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: colors.backgroundElevated,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 6,
-    borderColor: colors.borderLight,
   },
   mainButtonInner: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.error,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -324,7 +310,6 @@ const styles = StyleSheet.create({
   pauseBar: {
     width: 8,
     height: 28,
-    backgroundColor: colors.white,
     borderRadius: 3,
   },
   playIcon: {
@@ -334,7 +319,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 24,
     borderTopWidth: 15,
     borderBottomWidth: 15,
-    borderLeftColor: colors.white,
     borderTopColor: "transparent",
     borderBottomColor: "transparent",
   },

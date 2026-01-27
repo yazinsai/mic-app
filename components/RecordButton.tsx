@@ -11,7 +11,8 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useRecorder } from "@/hooks/useRecorder";
-import { colors, spacing, typography, shadows, radii } from "@/constants/Colors";
+import { spacing, typography, shadows, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface RecordButtonProps {
   onRecordingComplete?: () => void;
@@ -24,6 +25,7 @@ function formatDuration(seconds: number): string {
 }
 
 export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
+  const colors = useColors();
   const {
     duration,
     hasPermission,
@@ -85,8 +87,8 @@ export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
   if (hasPermission === false) {
     return (
       <View style={styles.container}>
-        <View style={[styles.recordButton, styles.buttonDisabled]}>
-          <Text style={styles.permissionText}>Microphone access required</Text>
+        <View style={[styles.recordButton, styles.buttonDisabled, { backgroundColor: colors.border, borderColor: colors.borderLight }]}>
+          <Text style={[styles.permissionText, { color: colors.textTertiary }]}>Microphone access required</Text>
         </View>
       </View>
     );
@@ -96,9 +98,9 @@ export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
   if (isActive || isSaving) {
     return (
       <View style={styles.container}>
-        <Text style={styles.durationText}>{formatDuration(duration)}</Text>
+        <Text style={[styles.durationText, { color: colors.textPrimary }]}>{formatDuration(duration)}</Text>
 
-        {isPaused && <Text style={styles.pausedLabel}>Paused</Text>}
+        {isPaused && <Text style={[styles.pausedLabel, { color: colors.warning }]}>Paused</Text>}
 
         <View style={styles.controlsContainer}>
           {/* Pause/Resume Button */}
@@ -108,6 +110,7 @@ export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
             style={({ pressed }) => [
               styles.controlButton,
               styles.pauseButton,
+              { backgroundColor: colors.backgroundElevated, borderColor: colors.border },
               pressed && styles.controlButtonPressed,
               isSaving && styles.controlButtonDisabled,
             ]}
@@ -116,11 +119,11 @@ export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
               style={isPaused ? styles.resumeIcon : styles.pauseIcon}
             >
               {isPaused ? (
-                <View style={styles.playTriangle} />
+                <View style={[styles.playTriangle, { borderLeftColor: colors.success }]} />
               ) : (
                 <>
-                  <View style={styles.pauseBar} />
-                  <View style={styles.pauseBar} />
+                  <View style={[styles.pauseBar, { backgroundColor: colors.textPrimary }]} />
+                  <View style={[styles.pauseBar, { backgroundColor: colors.textPrimary }]} />
                 </>
               )}
             </View>
@@ -133,18 +136,19 @@ export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
             style={({ pressed }) => [
               styles.controlButton,
               styles.stopButton,
+              { backgroundColor: colors.error },
               pressed && styles.controlButtonPressed,
             ]}
           >
             {isSaving ? (
               <ActivityIndicator color={colors.white} size="small" />
             ) : (
-              <View style={styles.stopSquare} />
+              <View style={[styles.stopSquare, { backgroundColor: colors.white }]} />
             )}
           </Pressable>
         </View>
 
-        <Text style={styles.instructionText}>
+        <Text style={[styles.instructionText, { color: colors.textTertiary }]}>
           {isSaving ? "Saving..." : isPaused ? "Tap to resume or stop" : "Recording..."}
         </Text>
       </View>
@@ -155,20 +159,21 @@ export function RecordButton({ onRecordingComplete }: RecordButtonProps) {
   return (
     <View style={styles.container}>
       <View style={styles.buttonContainer}>
-        <Animated.View style={[styles.pulseRing, pulseAnimatedStyle]} />
+        <Animated.View style={[styles.pulseRing, { backgroundColor: colors.error }, pulseAnimatedStyle]} />
 
         <Pressable
           onPress={handleStartRecording}
           style={({ pressed }) => [
             styles.recordButton,
-            pressed && styles.recordButtonPressed,
+            { backgroundColor: colors.backgroundElevated, borderColor: colors.border },
+            pressed && [styles.recordButtonPressed, { borderColor: colors.error }],
           ]}
         >
-          <View style={styles.innerCircle} />
+          <View style={[styles.innerCircle, { backgroundColor: colors.error }]} />
         </Pressable>
       </View>
 
-      <Text style={styles.instructionText}>Tap to record</Text>
+      <Text style={[styles.instructionText, { color: colors.textTertiary }]}>Tap to record</Text>
     </View>
   );
 }
@@ -189,44 +194,34 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: colors.error,
   },
   recordButton: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: colors.backgroundElevated,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 4,
-    borderColor: colors.border,
     ...shadows.md,
   },
   recordButtonPressed: {
     transform: [{ scale: 0.95 }],
-    borderColor: colors.error,
   },
-  buttonDisabled: {
-    backgroundColor: colors.border,
-    borderColor: colors.borderLight,
-  },
+  buttonDisabled: {},
   innerCircle: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.error,
   },
   durationText: {
     fontSize: typography.display,
     fontWeight: typography.light,
-    color: colors.textPrimary,
     marginBottom: spacing.sm,
     fontVariant: ["tabular-nums"],
   },
   pausedLabel: {
     fontSize: typography.sm,
     fontWeight: typography.semibold,
-    color: colors.warning,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xl,
@@ -253,15 +248,12 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.backgroundElevated,
     borderWidth: 2,
-    borderColor: colors.border,
   },
   stopButton: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: colors.error,
   },
   pauseIcon: {
     flexDirection: "row",
@@ -272,7 +264,6 @@ const styles = StyleSheet.create({
   pauseBar: {
     width: 5,
     height: 18,
-    backgroundColor: colors.textPrimary,
     borderRadius: 2,
   },
   resumeIcon: {
@@ -286,7 +277,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 16,
     borderTopWidth: 10,
     borderBottomWidth: 10,
-    borderLeftColor: colors.success,
     borderTopColor: "transparent",
     borderBottomColor: "transparent",
   },
@@ -294,16 +284,13 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: radii.sm,
-    backgroundColor: colors.white,
   },
   instructionText: {
     fontSize: typography.lg,
-    color: colors.textTertiary,
     marginTop: spacing.xl,
   },
   permissionText: {
     fontSize: typography.xs,
-    color: colors.textTertiary,
     textAlign: "center",
     paddingHorizontal: spacing.lg,
   },

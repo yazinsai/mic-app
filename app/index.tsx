@@ -38,24 +38,14 @@ export interface ActionWithRecording extends Action {
     title?: string | null;
   };
 }
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii, actionTypeColors, type ActionType } from "@/constants/Colors";
+import { useColors, type ThemeColors } from "@/hooks/useThemeColors";
 import { db } from "@/lib/db";
 
 type TabKey = "actions" | "recordings";
-type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
 type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
-const TYPE_CONFIG: Record<ActionType, { label: string; color: string; bg: string }> = {
-  bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
-  feature: { label: "FEATURE", color: "#93c5fd", bg: "#1e3a5f" },
-  todo: { label: "TODO", color: "#86efac", bg: "#14532d" },
-  note: { label: "NOTE", color: "#d1d5db", bg: "#374151" },
-  question: { label: "?", color: "#fcd34d", bg: "#78350f" },
-  command: { label: "CMD", color: "#c4b5fd", bg: "#4c1d95" },
-  idea: { label: "IDEA", color: "#fbbf24", bg: "#92400e" },
-};
-
-function getStatusDisplay(action: Action): { label: string; color: string; bg: string } {
+function getStatusDisplay(action: Action, colors: ThemeColors): { label: string; color: string; bg: string } {
   const status = action.status as ActionStatus;
 
   // Check if awaiting user feedback
@@ -65,7 +55,7 @@ function getStatusDisplay(action: Action): { label: string; color: string; bg: s
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.role === "assistant" && status === "completed") {
-          return { label: "Review", color: "#fbbf24", bg: "#78350f" };
+          return { label: actionTypeColors.review.label, color: actionTypeColors.review.color, bg: actionTypeColors.review.bg };
         }
       }
     } catch {
@@ -136,6 +126,7 @@ function parseProgress(json: string | undefined | null): Progress | null {
 }
 
 export default function HomeScreen() {
+  const colors = useColors();
   const [activeTab, setActiveTab] = useState<TabKey>("actions");
 
   const {
@@ -269,10 +260,94 @@ export default function HomeScreen() {
 
   const headerTitle = activeTab === "actions" ? "Actions" : "Recordings";
 
+  // Create markdown styles dynamically based on current theme
+  const markdownStyles = {
+    body: {
+      color: colors.textSecondary,
+      fontSize: typography.sm,
+      lineHeight: typography.sm * 1.6,
+    },
+    heading1: {
+      color: colors.textPrimary,
+      fontSize: typography.xl,
+      fontWeight: "700" as const,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    heading2: {
+      color: colors.textPrimary,
+      fontSize: typography.lg,
+      fontWeight: "600" as const,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    heading3: {
+      color: colors.textPrimary,
+      fontSize: typography.base,
+      fontWeight: "600" as const,
+      marginTop: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    paragraph: {
+      marginBottom: spacing.sm,
+    },
+    strong: {
+      fontWeight: "600" as const,
+      color: colors.textPrimary,
+    },
+    em: {
+      fontStyle: "italic" as const,
+    },
+    bullet_list: {
+      marginBottom: spacing.sm,
+    },
+    ordered_list: {
+      marginBottom: spacing.sm,
+    },
+    list_item: {
+      marginBottom: spacing.xs,
+    },
+    code_inline: {
+      backgroundColor: colors.backgroundElevated,
+      color: colors.primary,
+      paddingHorizontal: 4,
+      borderRadius: 4,
+      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+      fontSize: typography.xs,
+    },
+    fence: {
+      backgroundColor: colors.backgroundElevated,
+      padding: spacing.sm,
+      borderRadius: radii.sm,
+      marginVertical: spacing.sm,
+    },
+    code_block: {
+      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+      fontSize: typography.xs,
+      color: colors.textSecondary,
+    },
+    blockquote: {
+      backgroundColor: colors.backgroundElevated,
+      borderLeftColor: colors.primary,
+      borderLeftWidth: 3,
+      paddingLeft: spacing.md,
+      paddingVertical: spacing.sm,
+      marginVertical: spacing.sm,
+    },
+    link: {
+      color: colors.primary,
+    },
+    hr: {
+      backgroundColor: colors.border,
+      height: 1,
+      marginVertical: spacing.md,
+    },
+  };
+
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{headerTitle}</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{headerTitle}</Text>
         <View style={styles.headerRight}>
           {(pendingCount > 0 || failedCount > 0) && (
             <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
@@ -322,18 +397,18 @@ export default function HomeScreen() {
         onRequestClose={handleCloseModal}
       >
         {selectedAction && (
-          <GestureHandlerRootView style={styles.modalContainer}>
+          <GestureHandlerRootView style={[styles.modalContainer, { backgroundColor: colors.background }]}>
             <KeyboardAvoidingView
               style={styles.flex1}
               behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Pressable onPress={handleCloseModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.textSecondary} />
               </Pressable>
               <View style={styles.headerBadges}>
                 {(() => {
-                  const typeConfig = TYPE_CONFIG[selectedAction.type as ActionType] ?? TYPE_CONFIG.note;
+                  const typeConfig = actionTypeColors[selectedAction.type as ActionType] ?? actionTypeColors.note;
                   return (
                     <View style={[styles.typeBadgeColored, { backgroundColor: typeConfig.bg }]}>
                       <Text style={[styles.typeBadgeColoredText, { color: typeConfig.color }]}>
@@ -343,7 +418,7 @@ export default function HomeScreen() {
                   );
                 })()}
                 {(() => {
-                  const statusDisplay = getStatusDisplay(selectedAction);
+                  const statusDisplay = getStatusDisplay(selectedAction, colors);
                   return (
                     <View style={[styles.statusBadge, { backgroundColor: statusDisplay.bg }]}>
                       <Text style={[styles.statusBadgeText, { color: statusDisplay.color }]}>
@@ -356,11 +431,11 @@ export default function HomeScreen() {
               {selectedAction.status === "in_progress" ? (
                 <Pressable
                   onPress={handleStopAction}
-                  style={({ pressed }) => [styles.stopButton, pressed && styles.buttonPressed]}
+                  style={({ pressed }) => [styles.stopButton, { backgroundColor: colors.error + "15" }, pressed && styles.buttonPressed]}
                 >
                   <View style={styles.stopButtonContent}>
                     <Ionicons name="stop-circle" size={20} color={colors.error} />
-                    <Text style={styles.stopButtonText}>Stop</Text>
+                    <Text style={[styles.stopButtonText, { color: colors.error }]}>Stop</Text>
                   </View>
                 </Pressable>
               ) : (
@@ -369,23 +444,23 @@ export default function HomeScreen() {
             </View>
 
             <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-              <Text style={styles.modalTitle}>{selectedAction.title}</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{selectedAction.title}</Text>
               {selectedAction.description && (
-                <Text style={styles.modalDescription}>{selectedAction.description}</Text>
+                <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>{selectedAction.description}</Text>
               )}
 
               {/* Timestamps */}
-              <View style={styles.timestampSection}>
+              <View style={[styles.timestampSection, { borderColor: colors.border }]}>
                 <View style={styles.timestampItem}>
                   <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                  <Text style={styles.timestampText}>
+                  <Text style={[styles.timestampText, { color: colors.textMuted }]}>
                     Created {formatRelativeTime(selectedAction.extractedAt)}
                   </Text>
                 </View>
                 {selectedAction.startedAt && (
                   <View style={styles.timestampItem}>
                     <Ionicons name="play-outline" size={14} color={colors.textMuted} />
-                    <Text style={styles.timestampText}>
+                    <Text style={[styles.timestampText, { color: colors.textMuted }]}>
                       Started {formatRelativeTime(selectedAction.startedAt)}
                     </Text>
                   </View>
@@ -393,7 +468,7 @@ export default function HomeScreen() {
                 {selectedAction.completedAt && (
                   <View style={styles.timestampItem}>
                     <Ionicons name="checkmark-outline" size={14} color={colors.textMuted} />
-                    <Text style={styles.timestampText}>
+                    <Text style={[styles.timestampText, { color: colors.textMuted }]}>
                       Completed {formatRelativeTime(selectedAction.completedAt)}
                     </Text>
                   </View>
@@ -405,33 +480,33 @@ export default function HomeScreen() {
                 const progress = parseProgress(selectedAction.progress);
                 if (!progress) {
                   return (
-                    <View style={styles.progressSection}>
+                    <View style={[styles.progressSection, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30" }]}>
                       <View style={styles.progressHeader}>
-                        <View style={styles.progressDot} />
-                        <Text style={styles.progressLabel}>Running...</Text>
+                        <View style={[styles.progressDot, { backgroundColor: colors.primary }]} />
+                        <Text style={[styles.progressLabel, { color: colors.primary }]}>Running...</Text>
                       </View>
-                      <Text style={styles.progressWaiting}>Waiting for updates...</Text>
+                      <Text style={[styles.progressWaiting, { color: colors.textMuted }]}>Waiting for updates...</Text>
                     </View>
                   );
                 }
                 return (
-                  <View style={styles.progressSection}>
+                  <View style={[styles.progressSection, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30" }]}>
                     <View style={styles.progressHeader}>
-                      <View style={styles.progressDot} />
-                      <Text style={styles.progressLabel}>Live Progress</Text>
+                      <View style={[styles.progressDot, { backgroundColor: colors.primary }]} />
+                      <Text style={[styles.progressLabel, { color: colors.primary }]}>Live Progress</Text>
                     </View>
 
                     {/* Current Task */}
                     {progress.currentTask && (
-                      <View style={styles.currentTaskBox}>
+                      <View style={[styles.currentTaskBox, { backgroundColor: colors.background }]}>
                         <Ionicons name="cog" size={16} color={colors.primary} />
-                        <Text style={styles.currentTaskText}>{progress.currentTask}</Text>
+                        <Text style={[styles.currentTaskText, { color: colors.textPrimary }]}>{progress.currentTask}</Text>
                       </View>
                     )}
 
                     {/* Todo List */}
                     {progress.todos && progress.todos.length > 0 && (
-                      <View style={styles.todosBox}>
+                      <View style={[styles.todosBox, { backgroundColor: colors.background }]}>
                         {progress.todos.map((todo, idx) => (
                           <View key={idx} style={styles.todoItem}>
                             <Ionicons
@@ -454,8 +529,9 @@ export default function HomeScreen() {
                             <Text
                               style={[
                                 styles.todoText,
-                                todo.status === "completed" && styles.todoCompleted,
-                                todo.status === "in_progress" && styles.todoActive,
+                                { color: colors.textSecondary },
+                                todo.status === "completed" && { color: colors.textMuted, textDecorationLine: "line-through" },
+                                todo.status === "in_progress" && { color: colors.primary, fontWeight: "500" },
                               ]}
                             >
                               {todo.content}
@@ -468,11 +544,11 @@ export default function HomeScreen() {
                     {/* Recent Tools */}
                     {progress.recentTools && progress.recentTools.length > 0 && (
                       <View style={styles.recentToolsBox}>
-                        <Text style={styles.recentToolsLabel}>Recent tools:</Text>
+                        <Text style={[styles.recentToolsLabel, { color: colors.textMuted }]}>Recent tools:</Text>
                         <View style={styles.toolsRow}>
                           {progress.recentTools.slice(-5).map((tool, idx) => (
-                            <View key={idx} style={styles.toolBadge}>
-                              <Text style={styles.toolBadgeText}>{tool.name}</Text>
+                            <View key={idx} style={[styles.toolBadge, { backgroundColor: colors.backgroundElevated }]}>
+                              <Text style={[styles.toolBadgeText, { color: colors.textSecondary }]}>{tool.name}</Text>
                             </View>
                           ))}
                         </View>
@@ -481,9 +557,9 @@ export default function HomeScreen() {
 
                     {/* Thinking Summary */}
                     {progress.lastThinkingSummary && (
-                      <View style={styles.thinkingBox}>
-                        <Text style={styles.thinkingLabel}>Thinking:</Text>
-                        <Text style={styles.thinkingText} numberOfLines={3}>
+                      <View style={[styles.thinkingBox, { backgroundColor: colors.background }]}>
+                        <Text style={[styles.thinkingLabel, { color: colors.textMuted }]}>Thinking:</Text>
+                        <Text style={[styles.thinkingText, { color: colors.textSecondary }]} numberOfLines={3}>
                           {progress.lastThinkingSummary}
                         </Text>
                       </View>
@@ -495,7 +571,7 @@ export default function HomeScreen() {
               {/* Original Voice Note */}
               {selectedAction._recording && (
                 <View style={styles.voiceNoteSection}>
-                  <Text style={styles.sectionLabel}>Original Voice Note</Text>
+                  <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Original Voice Note</Text>
                   <AudioPlayer
                     uri={selectedAction._recording.localFilePath}
                     duration={selectedAction._recording.duration}
@@ -507,19 +583,19 @@ export default function HomeScreen() {
               {/* Open App Button */}
               {selectedAction.deployUrl && (
                 <Pressable
-                  style={({ pressed }) => [styles.openAppButton, pressed && styles.buttonPressed]}
+                  style={({ pressed }) => [styles.openAppButton, { backgroundColor: colors.success }, pressed && styles.buttonPressed]}
                   onPress={() => Linking.openURL(selectedAction.deployUrl!)}
                 >
                   <Ionicons name="open-outline" size={18} color={colors.background} />
-                  <Text style={styles.openAppButtonText}>Open App</Text>
+                  <Text style={[styles.openAppButtonText, { color: colors.background }]}>Open App</Text>
                 </Pressable>
               )}
 
               {/* Result */}
               {selectedAction.result && (
                 <View style={styles.resultSection}>
-                  <Text style={styles.sectionLabel}>Result</Text>
-                  <View style={styles.resultBox}>
+                  <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Result</Text>
+                  <View style={[styles.resultBox, { backgroundColor: colors.success + "15" }]}>
                     <Markdown style={markdownStyles}>
                       {selectedAction.result}
                     </Markdown>
@@ -530,10 +606,10 @@ export default function HomeScreen() {
               {/* Error */}
               {selectedAction.errorMessage && (
                 <View style={styles.errorSection}>
-                  <Text style={styles.sectionLabel}>Error</Text>
-                  <View style={styles.errorBox}>
+                  <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Error</Text>
+                  <View style={[styles.errorBox, { backgroundColor: colors.error + "15" }]}>
                     <Ionicons name="alert-circle" size={18} color={colors.error} />
-                    <Text style={styles.errorText}>{selectedAction.errorMessage}</Text>
+                    <Text style={[styles.errorText, { color: colors.error }]}>{selectedAction.errorMessage}</Text>
                   </View>
                 </View>
               )}
@@ -541,20 +617,22 @@ export default function HomeScreen() {
               {/* Thread Messages */}
               {parseMessages(selectedAction.messages).length > 0 && (
                 <View style={styles.threadSection}>
-                  <Text style={styles.threadLabel}>Thread</Text>
+                  <Text style={[styles.threadLabel, { color: colors.textPrimary }]}>Thread</Text>
                   {parseMessages(selectedAction.messages).map((msg, idx) => (
                     <View
                       key={idx}
                       style={[
                         styles.messageBubble,
-                        msg.role === "user" ? styles.userBubble : styles.assistantBubble,
+                        msg.role === "user"
+                          ? [styles.userBubble, { backgroundColor: colors.primary + "20" }]
+                          : [styles.assistantBubble, { backgroundColor: colors.backgroundElevated }],
                       ]}
                     >
-                      <Text style={styles.messageRole}>
+                      <Text style={[styles.messageRole, { color: colors.textTertiary }]}>
                         {msg.role === "user" ? "You" : "Claude"}
                       </Text>
-                      <Text style={styles.messageContent}>{msg.content}</Text>
-                      <Text style={styles.messageTime}>
+                      <Text style={[styles.messageContent, { color: colors.textPrimary }]}>{msg.content}</Text>
+                      <Text style={[styles.messageTime, { color: colors.textMuted }]}>
                         {new Date(msg.timestamp).toLocaleString()}
                       </Text>
                     </View>
@@ -564,11 +642,11 @@ export default function HomeScreen() {
 
               {/* Input for new message */}
               <View style={styles.feedbackSection}>
-                <Text style={styles.feedbackLabel}>
+                <Text style={[styles.feedbackLabel, { color: colors.textPrimary }]}>
                   {parseMessages(selectedAction.messages).length > 0 ? "Reply" : "Start a thread"}
                 </Text>
                 <TextInput
-                  style={styles.feedbackInput}
+                  style={[styles.feedbackInput, { backgroundColor: colors.backgroundElevated, color: colors.textPrimary }]}
                   placeholder="Type your message..."
                   placeholderTextColor={colors.textMuted}
                   multiline
@@ -617,7 +695,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   flex1: {
     flex: 1,
@@ -631,7 +708,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   headerTitle: {
-    color: colors.textPrimary,
     fontSize: 32,
     fontWeight: "700",
   },
@@ -646,7 +722,6 @@ const styles = StyleSheet.create({
   // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   modalHeader: {
     flexDirection: "row",
@@ -655,7 +730,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   closeButton: {
     width: 40,
@@ -664,7 +738,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   stopButton: {
-    backgroundColor: colors.error + "15",
     borderRadius: radii.md,
   },
   stopButtonContent: {
@@ -675,18 +748,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   stopButtonText: {
-    color: colors.error,
     fontSize: typography.sm,
     fontWeight: "600",
   },
   typeBadge: {
-    backgroundColor: colors.backgroundElevated,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: radii.sm,
   },
   typeBadgeText: {
-    color: colors.textSecondary,
     fontSize: typography.xs,
     fontWeight: "600",
   },
@@ -727,12 +797,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: typography.xl,
     fontWeight: "700",
-    color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
   modalDescription: {
     fontSize: typography.base,
-    color: colors.textSecondary,
     lineHeight: typography.base * 1.5,
     marginBottom: spacing.md,
   },
@@ -744,7 +812,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: colors.border,
   },
   timestampItem: {
     flexDirection: "row",
@@ -753,16 +820,13 @@ const styles = StyleSheet.create({
   },
   timestampText: {
     fontSize: typography.xs,
-    color: colors.textMuted,
   },
   // Progress section styles
   progressSection: {
     marginBottom: spacing.lg,
-    backgroundColor: colors.primary + "10",
     borderRadius: radii.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.primary + "30",
   },
   progressHeader: {
     flexDirection: "row",
@@ -774,23 +838,19 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.primary,
   },
   progressLabel: {
     fontSize: typography.sm,
     fontWeight: "600",
-    color: colors.primary,
   },
   progressWaiting: {
     fontSize: typography.sm,
-    color: colors.textMuted,
     fontStyle: "italic",
   },
   currentTaskBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: colors.background,
     padding: spacing.sm,
     borderRadius: radii.sm,
     marginBottom: spacing.md,
@@ -798,11 +858,9 @@ const styles = StyleSheet.create({
   currentTaskText: {
     flex: 1,
     fontSize: typography.sm,
-    color: colors.textPrimary,
     fontWeight: "500",
   },
   todosBox: {
-    backgroundColor: colors.background,
     borderRadius: radii.sm,
     padding: spacing.sm,
     marginBottom: spacing.md,
@@ -816,23 +874,13 @@ const styles = StyleSheet.create({
   todoText: {
     flex: 1,
     fontSize: typography.sm,
-    color: colors.textSecondary,
     lineHeight: typography.sm * 1.4,
-  },
-  todoCompleted: {
-    color: colors.textMuted,
-    textDecorationLine: "line-through",
-  },
-  todoActive: {
-    color: colors.primary,
-    fontWeight: "500",
   },
   recentToolsBox: {
     marginBottom: spacing.md,
   },
   recentToolsLabel: {
     fontSize: typography.xs,
-    color: colors.textMuted,
     marginBottom: spacing.xs,
   },
   toolsRow: {
@@ -841,36 +889,30 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   toolBadge: {
-    backgroundColor: colors.backgroundElevated,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radii.sm,
   },
   toolBadgeText: {
     fontSize: typography.xs,
-    color: colors.textSecondary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   thinkingBox: {
-    backgroundColor: colors.background,
     borderRadius: radii.sm,
     padding: spacing.sm,
   },
   thinkingLabel: {
     fontSize: typography.xs,
-    color: colors.textMuted,
     marginBottom: spacing.xs,
   },
   thinkingText: {
     fontSize: typography.sm,
-    color: colors.textSecondary,
     fontStyle: "italic",
     lineHeight: typography.sm * 1.4,
   },
   sectionLabel: {
     fontSize: typography.sm,
     fontWeight: "600",
-    color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
   voiceNoteSection: {
@@ -887,19 +929,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
-    backgroundColor: colors.success,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.md,
     marginBottom: spacing.lg,
   },
   openAppButtonText: {
-    color: colors.background,
     fontSize: typography.base,
     fontWeight: "600",
   },
   resultBox: {
-    backgroundColor: "rgba(34, 197, 94, 0.1)",
     padding: spacing.md,
     borderRadius: radii.md,
   },
@@ -907,13 +946,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
     padding: spacing.md,
     borderRadius: radii.md,
   },
   errorText: {
     flex: 1,
-    color: colors.error,
     fontSize: typography.sm,
     lineHeight: typography.sm * 1.4,
   },
@@ -923,7 +960,6 @@ const styles = StyleSheet.create({
   threadLabel: {
     fontSize: typography.sm,
     fontWeight: "600",
-    color: colors.textPrimary,
     marginBottom: spacing.md,
   },
   messageBubble: {
@@ -932,27 +968,22 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   userBubble: {
-    backgroundColor: colors.primary + "20",
     marginLeft: spacing.xl,
   },
   assistantBubble: {
-    backgroundColor: colors.backgroundElevated,
     marginRight: spacing.xl,
   },
   messageRole: {
     fontSize: typography.xs,
     fontWeight: "600",
-    color: colors.textTertiary,
     marginBottom: spacing.xs,
   },
   messageContent: {
     fontSize: typography.sm,
-    color: colors.textPrimary,
     lineHeight: typography.sm * 1.5,
   },
   messageTime: {
     fontSize: typography.xs,
-    color: colors.textMuted,
     marginTop: spacing.xs,
   },
   feedbackSection: {
@@ -962,128 +993,16 @@ const styles = StyleSheet.create({
   feedbackLabel: {
     fontSize: typography.sm,
     fontWeight: "600",
-    color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
   feedbackInput: {
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.md,
     padding: spacing.md,
-    color: colors.textPrimary,
     fontSize: typography.base,
     minHeight: 80,
     textAlignVertical: "top",
   },
-  submitButton: {
-    flexDirection: "row",
-    marginTop: spacing.lg,
-    paddingVertical: spacing.md + 2,
-    paddingHorizontal: spacing.xl,
-    backgroundColor: colors.primary,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  submitButtonDisabled: {
-    opacity: 0.4,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  submitButtonText: {
-    color: colors.white,
-    fontSize: typography.md,
-    fontWeight: "600",
-  },
   buttonPressed: {
     opacity: 0.8,
-  },
-});
-
-// Markdown styles for result rendering
-const markdownStyles = StyleSheet.create({
-  body: {
-    color: colors.textSecondary,
-    fontSize: typography.sm,
-    lineHeight: typography.sm * 1.6,
-  },
-  heading1: {
-    color: colors.textPrimary,
-    fontSize: typography.xl,
-    fontWeight: "700",
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  heading2: {
-    color: colors.textPrimary,
-    fontSize: typography.lg,
-    fontWeight: "600",
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  heading3: {
-    color: colors.textPrimary,
-    fontSize: typography.base,
-    fontWeight: "600",
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  paragraph: {
-    marginBottom: spacing.sm,
-  },
-  strong: {
-    fontWeight: "600",
-    color: colors.textPrimary,
-  },
-  em: {
-    fontStyle: "italic",
-  },
-  bullet_list: {
-    marginBottom: spacing.sm,
-  },
-  ordered_list: {
-    marginBottom: spacing.sm,
-  },
-  list_item: {
-    marginBottom: spacing.xs,
-  },
-  code_inline: {
-    backgroundColor: colors.backgroundElevated,
-    color: colors.primary,
-    paddingHorizontal: 4,
-    borderRadius: 4,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: typography.xs,
-  },
-  fence: {
-    backgroundColor: colors.backgroundElevated,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    marginVertical: spacing.sm,
-  },
-  code_block: {
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: typography.xs,
-    color: colors.textSecondary,
-  },
-  blockquote: {
-    backgroundColor: colors.backgroundElevated,
-    borderLeftColor: colors.primary,
-    borderLeftWidth: 3,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.sm,
-    marginVertical: spacing.sm,
-  },
-  link: {
-    color: colors.primary,
-  },
-  hr: {
-    backgroundColor: colors.border,
-    height: 1,
-    marginVertical: spacing.md,
   },
 });

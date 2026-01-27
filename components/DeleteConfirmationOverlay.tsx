@@ -1,9 +1,8 @@
 import { View, Text, Pressable, StyleSheet, Modal } from "react-native";
 import Animated, { FadeIn, FadeOut, SlideInUp, SlideOutDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { colors, spacing, typography, radii, shadows } from "@/constants/Colors";
-
-const errorBgAlpha = "rgba(239, 68, 68, 0.12)";
+import { spacing, typography, radii, shadows } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface DeleteConfirmationOverlayProps {
   visible: boolean;
@@ -20,6 +19,8 @@ export function DeleteConfirmationOverlay({
   onCancel,
   onConfirm,
 }: DeleteConfirmationOverlayProps) {
+  const colors = useColors();
+
   const handleDelete = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     onConfirm();
@@ -38,7 +39,7 @@ export function DeleteConfirmationOverlay({
         <Animated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(150)}
-          style={styles.backdrop}
+          style={[styles.backdrop, { backgroundColor: colors.overlay }]}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={handleCancel} />
         </Animated.View>
@@ -46,29 +47,29 @@ export function DeleteConfirmationOverlay({
         <Animated.View
           entering={SlideInUp.duration(250)}
           exiting={SlideOutDown.duration(200)}
-          style={styles.dialog}
+          style={[styles.dialog, { backgroundColor: colors.backgroundElevated }]}
         >
           <View style={styles.header}>
-            <View style={styles.iconContainer}>
+            <View style={[styles.iconContainer, { backgroundColor: colors.errorBgAlpha }]}>
               <View style={styles.trashIcon}>
-                <View style={styles.trashLid} />
-                <View style={styles.trashBody}>
-                  <View style={styles.trashLine} />
-                  <View style={styles.trashLine} />
-                  <View style={styles.trashLine} />
+                <View style={[styles.trashLid, { backgroundColor: colors.error }]} />
+                <View style={[styles.trashBody, { borderColor: colors.error }]}>
+                  <View style={[styles.trashLine, { backgroundColor: colors.error }]} />
+                  <View style={[styles.trashLine, { backgroundColor: colors.error }]} />
+                  <View style={[styles.trashLine, { backgroundColor: colors.error }]} />
                 </View>
               </View>
             </View>
-            <Text style={styles.title}>{title}</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
           </View>
 
-          <Text style={styles.description}>
+          <Text style={[styles.description, { color: colors.textSecondary }]}>
             Are you sure you want to delete this recording? This action cannot be undone.
           </Text>
 
           {message && (
-            <View style={styles.previewContainer}>
-              <Text style={styles.previewText} numberOfLines={3}>
+            <View style={[styles.previewContainer, { backgroundColor: colors.background }]}>
+              <Text style={[styles.previewText, { color: colors.textTertiary }]} numberOfLines={3}>
                 "{message}"
               </Text>
             </View>
@@ -79,22 +80,22 @@ export function DeleteConfirmationOverlay({
               style={({ pressed }) => [
                 styles.button,
                 styles.cancelButton,
-                pressed && styles.cancelButtonPressed,
+                pressed && { backgroundColor: colors.border },
               ]}
               onPress={handleCancel}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.textPrimary }]}>Cancel</Text>
             </Pressable>
 
             <Pressable
               style={({ pressed }) => [
                 styles.button,
-                styles.deleteButton,
-                pressed && styles.deleteButtonPressed,
+                { backgroundColor: colors.error },
+                pressed && { backgroundColor: colors.errorDark },
               ]}
               onPress={handleDelete}
             >
-              <Text style={styles.deleteButtonText}>Delete</Text>
+              <Text style={[styles.deleteButtonText, { color: colors.white }]}>Delete</Text>
             </Pressable>
           </View>
         </Animated.View>
@@ -112,10 +113,8 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
   },
   dialog: {
-    backgroundColor: colors.backgroundElevated,
     borderRadius: radii.xl,
     padding: spacing.xl,
     width: "100%",
@@ -130,7 +129,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: errorBgAlpha,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: spacing.md,
@@ -141,7 +139,6 @@ const styles = StyleSheet.create({
   trashLid: {
     width: 20,
     height: 3,
-    backgroundColor: colors.error,
     borderRadius: 1.5,
     marginBottom: 2,
   },
@@ -149,7 +146,6 @@ const styles = StyleSheet.create({
     width: 16,
     height: 18,
     borderWidth: 2,
-    borderColor: colors.error,
     borderTopWidth: 0,
     borderBottomLeftRadius: 3,
     borderBottomRightRadius: 3,
@@ -161,30 +157,25 @@ const styles = StyleSheet.create({
   trashLine: {
     width: 2,
     height: 10,
-    backgroundColor: colors.error,
     borderRadius: 1,
   },
   title: {
-    color: colors.textPrimary,
     fontSize: typography.xl,
     fontWeight: typography.semibold,
     textAlign: "center",
   },
   description: {
-    color: colors.textSecondary,
     fontSize: typography.base,
     textAlign: "center",
     lineHeight: 20,
     marginBottom: spacing.lg,
   },
   previewContainer: {
-    backgroundColor: colors.background,
     borderRadius: radii.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
   },
   previewText: {
-    color: colors.textTertiary,
     fontSize: typography.sm,
     fontStyle: "italic",
     lineHeight: 18,
@@ -201,22 +192,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cancelButton: {},
-  cancelButtonPressed: {
-    backgroundColor: colors.border,
-  },
   cancelButtonText: {
-    color: colors.textPrimary,
     fontSize: typography.md,
     fontWeight: typography.medium,
   },
-  deleteButton: {
-    backgroundColor: colors.error,
-  },
-  deleteButtonPressed: {
-    backgroundColor: colors.errorDark,
-  },
   deleteButtonText: {
-    color: colors.white,
     fontSize: typography.md,
     fontWeight: typography.semibold,
   },

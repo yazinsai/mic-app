@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { colors } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface WaveformProps {
   metering: number;
@@ -86,8 +86,10 @@ export function Waveform({
   isActive,
   barCount = 40,
   height = 120,
-  color = colors.primary,
+  color,
 }: WaveformProps) {
+  const colors = useColors();
+  const barColor = color ?? colors.primary;
   const bars = [];
   for (let i = 0; i < barCount; i++) {
     bars.push(
@@ -98,7 +100,7 @@ export function Waveform({
         totalBars={barCount}
         isActive={isActive}
         height={height}
-        color={color}
+        color={barColor}
       />
     );
   }
@@ -121,8 +123,10 @@ export function MiniWaveform({
   seed = 0,
   width = 100,
   height = 24,
-  color = colors.primary,
+  color,
 }: MiniWaveformProps) {
+  const colors = useColors();
+  const barColor = color ?? colors.primary;
   const barCount = Math.floor(width / 4);
 
   const bars = [];
@@ -135,7 +139,7 @@ export function MiniWaveform({
         style={[
           styles.miniStaticBar,
           {
-            backgroundColor: color,
+            backgroundColor: barColor,
             height: barHeight * height,
             opacity: 0.7 + pseudoRandom * 0.3,
           },

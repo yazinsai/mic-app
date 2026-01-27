@@ -1,22 +1,12 @@
 import { View, Text, StyleSheet } from "react-native";
 import type { InstaQLEntity } from "@instantdb/react-native";
 import type { AppSchema } from "@/instant.schema";
-import { colors, spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii, actionTypeColors, type ActionType } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 export type Action = InstaQLEntity<AppSchema, "actions">;
 
-type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea";
 type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
-
-const TYPE_CONFIG: Record<ActionType, { label: string; color: string; bg: string }> = {
-  bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
-  feature: { label: "FEATURE", color: "#93c5fd", bg: "#1e3a5f" },
-  todo: { label: "TODO", color: "#86efac", bg: "#14532d" },
-  note: { label: "NOTE", color: "#d1d5db", bg: "#374151" },
-  question: { label: "?", color: "#fcd34d", bg: "#78350f" },
-  command: { label: "CMD", color: "#c4b5fd", bg: "#4c1d95" },
-  idea: { label: "IDEA", color: "#fbbf24", bg: "#92400e" },
-};
 
 interface StatusDisplay {
   label: string;
@@ -24,7 +14,16 @@ interface StatusDisplay {
   bg: string;
 }
 
-function getStatusDisplay(action: Action): StatusDisplay {
+interface ThemeColors {
+  textTertiary: string;
+  backgroundElevated: string;
+  primary: string;
+  success: string;
+  error: string;
+  warning: string;
+}
+
+function getStatusDisplay(action: Action, colors: ThemeColors): StatusDisplay {
   const status = action.status as ActionStatus;
 
   // Check if awaiting user feedback (has assistant message, user hasn't replied)
@@ -34,7 +33,7 @@ function getStatusDisplay(action: Action): StatusDisplay {
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.role === "assistant" && status === "completed") {
-          return { label: "Review", color: "#fbbf24", bg: "#78350f" };
+          return { label: actionTypeColors.review.label, color: actionTypeColors.review.color, bg: actionTypeColors.review.bg };
         }
       }
     } catch {
@@ -63,8 +62,9 @@ interface ActionItemProps {
 }
 
 export function ActionItem({ action }: ActionItemProps) {
-  const typeConfig = TYPE_CONFIG[action.type as ActionType] ?? TYPE_CONFIG.note;
-  const statusDisplay = getStatusDisplay(action);
+  const colors = useColors();
+  const typeConfig = actionTypeColors[action.type as ActionType] ?? actionTypeColors.note;
+  const statusDisplay = getStatusDisplay(action, colors);
 
   return (
     <View style={styles.container}>
@@ -82,16 +82,16 @@ export function ActionItem({ action }: ActionItemProps) {
           </View>
         </View>
       </View>
-      <Text style={styles.title} numberOfLines={2}>
+      <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={2}>
         {action.title}
       </Text>
       {action.description && (
-        <Text style={styles.description} numberOfLines={2}>
+        <Text style={[styles.description, { color: colors.textSecondary }]} numberOfLines={2}>
           {action.description}
         </Text>
       )}
       {action.errorMessage && (
-        <Text style={styles.error} numberOfLines={2}>
+        <Text style={[styles.error, { color: colors.error }]} numberOfLines={2}>
           {action.errorMessage}
         </Text>
       )}
@@ -135,19 +135,16 @@ const styles = StyleSheet.create({
     fontWeight: typography.medium,
   },
   title: {
-    color: colors.textPrimary,
     fontSize: typography.base,
     fontWeight: typography.medium,
     lineHeight: typography.base * 1.4,
   },
   description: {
-    color: colors.textSecondary,
     fontSize: typography.sm,
     marginTop: spacing.xs,
     lineHeight: typography.sm * 1.4,
   },
   error: {
-    color: colors.error,
     fontSize: typography.sm,
     marginTop: spacing.xs,
     lineHeight: typography.sm * 1.4,

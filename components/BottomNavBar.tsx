@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, spacing, shadows, radii } from "@/constants/Colors";
+import { spacing, shadows, radii } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 type TabKey = "actions" | "recordings";
 
@@ -19,10 +20,12 @@ export function BottomNavBar({
   recordDisabled,
   runningCount = 0,
 }: BottomNavBarProps) {
+  const colors = useColors();
+
   return (
     <View style={styles.container}>
       {/* Background bar */}
-      <View style={styles.bar}>
+      <View style={[styles.bar, { backgroundColor: colors.backgroundElevated, borderTopColor: colors.border }]}>
         {/* Actions Tab */}
         <Pressable
           style={styles.tab}
@@ -35,8 +38,8 @@ export function BottomNavBar({
               color={activeTab === "actions" ? colors.primary : colors.textTertiary}
             />
             {runningCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
+              <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                <Text style={[styles.badgeText, { color: colors.white }]}>
                   {runningCount > 99 ? "99+" : runningCount}
                 </Text>
               </View>
@@ -45,7 +48,8 @@ export function BottomNavBar({
           <Text
             style={[
               styles.tabLabel,
-              activeTab === "actions" && styles.tabLabelActive,
+              { color: colors.textTertiary },
+              activeTab === "actions" && { color: colors.primary },
             ]}
           >
             Actions
@@ -68,7 +72,8 @@ export function BottomNavBar({
           <Text
             style={[
               styles.tabLabel,
-              activeTab === "recordings" && styles.tabLabelActive,
+              { color: colors.textTertiary },
+              activeTab === "recordings" && { color: colors.primary },
             ]}
           >
             Recordings
@@ -78,12 +83,13 @@ export function BottomNavBar({
 
       {/* Centered Record Button */}
       <View style={styles.recordButtonContainer}>
-        <View style={styles.recordButtonOuter}>
+        <View style={[styles.recordButtonOuter, { backgroundColor: colors.backgroundElevated, borderColor: colors.border }]}>
           <Pressable
             onPress={onRecordPress}
             disabled={recordDisabled}
             style={({ pressed }) => [
               styles.recordButton,
+              { backgroundColor: colors.primary },
               pressed && styles.recordButtonPressed,
               recordDisabled && styles.recordButtonDisabled,
             ]}
@@ -111,9 +117,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.backgroundElevated,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
     paddingBottom: 28, // Safe area padding
     paddingTop: spacing.md,
     paddingHorizontal: spacing.xl,
@@ -129,7 +133,6 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 11,
     fontWeight: "500",
-    color: colors.textTertiary,
     marginTop: 4,
   },
   iconContainer: {
@@ -139,7 +142,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -4,
     right: -10,
-    backgroundColor: colors.primary,
     borderRadius: 10,
     minWidth: 18,
     height: 18,
@@ -148,12 +150,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   badgeText: {
-    color: colors.white,
     fontSize: 10,
     fontWeight: "700",
-  },
-  tabLabelActive: {
-    color: colors.primary,
   },
   centerSpacer: {
     width: OUTER_RING_SIZE + spacing.lg,
@@ -168,17 +166,14 @@ const styles = StyleSheet.create({
     width: OUTER_RING_SIZE,
     height: OUTER_RING_SIZE,
     borderRadius: OUTER_RING_SIZE / 2,
-    backgroundColor: colors.backgroundElevated,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: colors.border,
   },
   recordButton: {
     width: RECORD_BUTTON_SIZE,
     height: RECORD_BUTTON_SIZE,
     borderRadius: RECORD_BUTTON_SIZE / 2,
-    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     ...shadows.md,

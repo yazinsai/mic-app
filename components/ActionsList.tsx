@@ -1,12 +1,15 @@
 import { View, Text, FlatList, StyleSheet } from "react-native";
 import { ActionItem, type Action } from "./ActionItem";
-import { colors, spacing, typography } from "@/constants/Colors";
+import { spacing, typography } from "@/constants/Colors";
+import { useColors } from "@/hooks/useThemeColors";
 
 interface ActionsListProps {
   actions: Action[];
 }
 
 export function ActionsList({ actions }: ActionsListProps) {
+  const colors = useColors();
+
   if (actions.length === 0) {
     return null;
   }
@@ -14,7 +17,7 @@ export function ActionsList({ actions }: ActionsListProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerText}>
+        <Text style={[styles.headerText, { color: colors.textTertiary }]}>
           {actions.length} action{actions.length !== 1 ? "s" : ""}
         </Text>
       </View>
@@ -37,7 +40,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   headerText: {
-    color: colors.textTertiary,
     fontSize: typography.xs,
     fontWeight: typography.medium,
     textTransform: "uppercase",
