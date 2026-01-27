@@ -23,6 +23,7 @@ import { RecordingsList } from "@/components/RecordingsList";
 import { ActionsScreen } from "@/components/ActionsScreen";
 import { BottomNavBar } from "@/components/BottomNavBar";
 import { AudioPlayer } from "@/components/AudioPlayer";
+import { VersionBadge } from "@/components/VersionBadge";
 import { useQueue } from "@/hooks/useQueue";
 import { useRecorder } from "@/hooks/useRecorder";
 import type { Recording } from "@/lib/queue";
@@ -272,9 +273,12 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{headerTitle}</Text>
-        {(pendingCount > 0 || failedCount > 0) && (
-          <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
-        )}
+        <View style={styles.headerRight}>
+          {(pendingCount > 0 || failedCount > 0) && (
+            <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
+          )}
+          <VersionBadge />
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -630,6 +634,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 32,
     fontWeight: "700",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
   },
   content: {
     flex: 1,
