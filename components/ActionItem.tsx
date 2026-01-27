@@ -1,8 +1,8 @@
 import { View, Text, StyleSheet } from "react-native";
 import type { InstaQLEntity } from "@instantdb/react-native";
 import type { AppSchema } from "@/instant.schema";
-import { spacing, typography, radii, actionTypeColors, type ActionType } from "@/constants/Colors";
-import { useColors } from "@/hooks/useThemeColors";
+import { spacing, typography, radii, actionTypeColorsDark, actionTypeColorsLight, type ActionType } from "@/constants/Colors";
+import { useThemeColors } from "@/hooks/useThemeColors";
 
 export type Action = InstaQLEntity<AppSchema, "actions">;
 
@@ -23,8 +23,9 @@ interface ThemeColors {
   warning: string;
 }
 
-function getStatusDisplay(action: Action, colors: ThemeColors): StatusDisplay {
+function getStatusDisplay(action: Action, colors: ThemeColors, isDark: boolean): StatusDisplay {
   const status = action.status as ActionStatus;
+  const typeColors = isDark ? actionTypeColorsDark : actionTypeColorsLight;
 
   // Check if awaiting user feedback (has assistant message, user hasn't replied)
   if (action.messages) {
@@ -33,7 +34,7 @@ function getStatusDisplay(action: Action, colors: ThemeColors): StatusDisplay {
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.role === "assistant" && status === "completed") {
-          return { label: actionTypeColors.review.label, color: actionTypeColors.review.color, bg: actionTypeColors.review.bg };
+          return { label: typeColors.review.label, color: typeColors.review.color, bg: typeColors.review.bg };
         }
       }
     } catch {
@@ -41,19 +42,22 @@ function getStatusDisplay(action: Action, colors: ThemeColors): StatusDisplay {
     }
   }
 
+  // Light mode needs higher alpha for visibility
+  const alpha = isDark ? "20" : "30";
+
   switch (status) {
     case "pending":
-      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + "20" };
+      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + alpha };
     case "in_progress":
-      return { label: "Running", color: colors.primary, bg: colors.primary + "20" };
+      return { label: "Running", color: colors.primary, bg: colors.primary + alpha };
     case "completed":
-      return { label: "Done", color: colors.success, bg: colors.success + "20" };
+      return { label: "Done", color: colors.success, bg: colors.success + alpha };
     case "failed":
-      return { label: "Failed", color: colors.error, bg: colors.error + "20" };
+      return { label: "Failed", color: colors.error, bg: colors.error + alpha };
     case "cancelled":
-      return { label: "Stopped", color: colors.warning, bg: colors.warning + "20" };
+      return { label: "Stopped", color: colors.warning, bg: colors.warning + alpha };
     default:
-      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + "20" };
+      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + alpha };
   }
 }
 
@@ -62,9 +66,10 @@ interface ActionItemProps {
 }
 
 export function ActionItem({ action }: ActionItemProps) {
-  const colors = useColors();
-  const typeConfig = actionTypeColors[action.type as ActionType] ?? actionTypeColors.note;
-  const statusDisplay = getStatusDisplay(action, colors);
+  const { colors, isDark } = useThemeColors();
+  const typeColors = isDark ? actionTypeColorsDark : actionTypeColorsLight;
+  const typeConfig = typeColors[action.type as ActionType] ?? typeColors.note;
+  const statusDisplay = getStatusDisplay(action, colors, isDark);
 
   return (
     <View style={styles.container}>

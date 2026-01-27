@@ -29,8 +29,8 @@ const semantic = {
   warning: "#f59e0b", // amber-500
 };
 
-// Action type colors (consistent across themes - these are badge colors)
-export const actionTypeColors = {
+// Action type colors - dark theme (dark backgrounds, light text)
+export const actionTypeColorsDark = {
   bug: { label: "BUG", color: "#fca5a5", bg: "#7f1d1d" },
   feature: { label: "FEATURE", color: "#93c5fd", bg: "#1e3a5f" },
   todo: { label: "TODO", color: "#86efac", bg: "#14532d" },
@@ -40,6 +40,21 @@ export const actionTypeColors = {
   idea: { label: "IDEA", color: "#fbbf24", bg: "#92400e" },
   review: { label: "Review", color: "#fbbf24", bg: "#78350f" },
 } as const;
+
+// Action type colors - light theme (soft tinted backgrounds, darker text)
+export const actionTypeColorsLight = {
+  bug: { label: "BUG", color: "#b91c1c", bg: "#fee2e2" }, // red-700 on red-100
+  feature: { label: "FEATURE", color: "#1d4ed8", bg: "#dbeafe" }, // blue-700 on blue-100
+  todo: { label: "TODO", color: "#15803d", bg: "#dcfce7" }, // green-700 on green-100
+  note: { label: "NOTE", color: "#374151", bg: "#f3f4f6" }, // gray-700 on gray-100
+  question: { label: "?", color: "#a16207", bg: "#fef3c7" }, // yellow-700 on yellow-100
+  command: { label: "CMD", color: "#6d28d9", bg: "#ede9fe" }, // violet-700 on violet-100
+  idea: { label: "IDEA", color: "#b45309", bg: "#fef3c7" }, // amber-700 on amber-100
+  review: { label: "Review", color: "#b45309", bg: "#fef3c7" }, // amber-700 on amber-100
+} as const;
+
+// Legacy export for backwards compatibility (uses dark theme)
+export const actionTypeColors = actionTypeColorsDark;
 
 export type ActionType = keyof typeof actionTypeColors;
 
@@ -86,21 +101,21 @@ const darkColors = {
 
 // Light theme tokens
 const lightColors = {
-  // Backgrounds
+  // Backgrounds - softer than pure white for reduced harshness
   background: gray[100],
-  backgroundElevated: "#fff",
+  backgroundElevated: "#fafafa", // Softer than #fff, reduces visual "holes"
   backgroundPressed: gray[200],
 
-  // Borders
-  border: gray[200],
-  borderLight: gray[300],
+  // Borders - stronger for better definition
+  border: gray[300], // Upgraded from gray[200] for visibility
+  borderLight: gray[200],
   borderFocused: semantic.primary,
 
-  // Text
-  textPrimary: gray[900],
+  // Text - softer black for elegance
+  textPrimary: "#1e293b", // slate-800, softer than gray-900
   textSecondary: gray[600],
   textTertiary: gray[500],
-  textMuted: gray[400],
+  textMuted: gray[500], // Upgraded from gray[400] for better contrast
 
   // Interactive
   primary: semantic.primary,

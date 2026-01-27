@@ -38,15 +38,16 @@ export interface ActionWithRecording extends Action {
     title?: string | null;
   };
 }
-import { spacing, typography, radii, actionTypeColors, type ActionType } from "@/constants/Colors";
-import { useColors, type ThemeColors } from "@/hooks/useThemeColors";
+import { spacing, typography, radii, actionTypeColorsDark, actionTypeColorsLight, type ActionType } from "@/constants/Colors";
+import { useThemeColors, type ThemeColors } from "@/hooks/useThemeColors";
 import { db } from "@/lib/db";
 
 type TabKey = "actions" | "recordings";
 type ActionStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
-function getStatusDisplay(action: Action, colors: ThemeColors): { label: string; color: string; bg: string } {
+function getStatusDisplay(action: Action, colors: ThemeColors, isDark: boolean): { label: string; color: string; bg: string } {
   const status = action.status as ActionStatus;
+  const typeColors = isDark ? actionTypeColorsDark : actionTypeColorsLight;
 
   // Check if awaiting user feedback
   if (action.messages) {
@@ -55,7 +56,7 @@ function getStatusDisplay(action: Action, colors: ThemeColors): { label: string;
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.role === "assistant" && status === "completed") {
-          return { label: actionTypeColors.review.label, color: actionTypeColors.review.color, bg: actionTypeColors.review.bg };
+          return { label: typeColors.review.label, color: typeColors.review.color, bg: typeColors.review.bg };
         }
       }
     } catch {
@@ -63,19 +64,22 @@ function getStatusDisplay(action: Action, colors: ThemeColors): { label: string;
     }
   }
 
+  // Light mode needs higher alpha for visibility
+  const alpha = isDark ? "20" : "30";
+
   switch (status) {
     case "pending":
-      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + "20" };
+      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + alpha };
     case "in_progress":
-      return { label: "Running", color: colors.primary, bg: colors.primary + "20" };
+      return { label: "Running", color: colors.primary, bg: colors.primary + alpha };
     case "completed":
-      return { label: "Done", color: colors.success, bg: colors.success + "20" };
+      return { label: "Done", color: colors.success, bg: colors.success + alpha };
     case "failed":
-      return { label: "Failed", color: colors.error, bg: colors.error + "20" };
+      return { label: "Failed", color: colors.error, bg: colors.error + alpha };
     case "cancelled":
-      return { label: "Stopped", color: colors.warning, bg: colors.warning + "20" };
+      return { label: "Stopped", color: colors.warning, bg: colors.warning + alpha };
     default:
-      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + "20" };
+      return { label: "Queued", color: colors.textTertiary, bg: colors.textMuted + alpha };
   }
 }
 
@@ -126,7 +130,7 @@ function parseProgress(json: string | undefined | null): Progress | null {
 }
 
 export default function HomeScreen() {
-  const colors = useColors();
+  const { colors, isDark } = useThemeColors();
   const [activeTab, setActiveTab] = useState<TabKey>("actions");
 
   const {
@@ -408,7 +412,8 @@ export default function HomeScreen() {
               </Pressable>
               <View style={styles.headerBadges}>
                 {(() => {
-                  const typeConfig = actionTypeColors[selectedAction.type as ActionType] ?? actionTypeColors.note;
+                  const typeColors = isDark ? actionTypeColorsDark : actionTypeColorsLight;
+                  const typeConfig = typeColors[selectedAction.type as ActionType] ?? typeColors.note;
                   return (
                     <View style={[styles.typeBadgeColored, { backgroundColor: typeConfig.bg }]}>
                       <Text style={[styles.typeBadgeColoredText, { color: typeConfig.color }]}>
@@ -418,7 +423,7 @@ export default function HomeScreen() {
                   );
                 })()}
                 {(() => {
-                  const statusDisplay = getStatusDisplay(selectedAction, colors);
+                  const statusDisplay = getStatusDisplay(selectedAction, colors, isDark);
                   return (
                     <View style={[styles.statusBadge, { backgroundColor: statusDisplay.bg }]}>
                       <Text style={[styles.statusBadgeText, { color: statusDisplay.color }]}>
@@ -431,7 +436,7 @@ export default function HomeScreen() {
               {selectedAction.status === "in_progress" ? (
                 <Pressable
                   onPress={handleStopAction}
-                  style={({ pressed }) => [styles.stopButton, { backgroundColor: colors.error + "15" }, pressed && styles.buttonPressed]}
+                  style={({ pressed }) => [styles.stopButton, { backgroundColor: colors.error + "20" }, pressed && styles.buttonPressed]}
                 >
                   <View style={styles.stopButtonContent}>
                     <Ionicons name="stop-circle" size={20} color={colors.error} />
@@ -595,7 +600,7 @@ export default function HomeScreen() {
               {selectedAction.result && (
                 <View style={styles.resultSection}>
                   <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Result</Text>
-                  <View style={[styles.resultBox, { backgroundColor: colors.success + "15" }]}>
+                  <View style={[styles.resultBox, { backgroundColor: colors.success + "20" }]}>
                     <Markdown style={markdownStyles}>
                       {selectedAction.result}
                     </Markdown>
@@ -607,7 +612,7 @@ export default function HomeScreen() {
               {selectedAction.errorMessage && (
                 <View style={styles.errorSection}>
                   <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Error</Text>
-                  <View style={[styles.errorBox, { backgroundColor: colors.error + "15" }]}>
+                  <View style={[styles.errorBox, { backgroundColor: colors.error + "20" }]}>
                     <Ionicons name="alert-circle" size={18} color={colors.error} />
                     <Text style={[styles.errorText, { color: colors.error }]}>{selectedAction.errorMessage}</Text>
                   </View>

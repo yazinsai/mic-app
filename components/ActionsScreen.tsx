@@ -165,7 +165,7 @@ interface ViewToggleProps {
 function ViewToggle({ value, onChange }: ViewToggleProps) {
   const { colors, isDark } = useThemeColors();
   return (
-    <View style={[styles.toggleContainer, { backgroundColor: colors.backgroundElevated }, !isDark && styles.toggleLightBorder]}>
+    <View style={[styles.toggleContainer, { backgroundColor: colors.backgroundElevated }, !isDark && [styles.toggleLightBorder, { borderColor: colors.border }]]}>
       <Pressable
         style={[styles.toggleOption, value === "timeline" && { backgroundColor: colors.background }]}
         onPress={() => onChange("timeline")}
@@ -257,7 +257,7 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <View style={[styles.searchInputWrapper, { backgroundColor: colors.backgroundElevated }, !isDark && styles.searchLightBorder]}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: colors.backgroundElevated }, !isDark && [styles.searchLightBorder, { borderColor: colors.border }]]}>
           <Ionicons name="search" size={18} color={colors.textMuted} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: colors.textPrimary }]}
@@ -303,7 +303,7 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
               </Text>
               <View style={[
                 styles.sectionBadge,
-                { backgroundColor: isDark ? colors.backgroundElevated : colors.textMuted + "25" },
+                { backgroundColor: isDark ? colors.backgroundElevated : colors.textMuted + "30" },
                 section.isRunning && { backgroundColor: colors.primary + "20" },
               ]}>
                 <Text style={[styles.sectionBadgeText, { color: colors.textTertiary }, section.isRunning && { color: colors.primary }]}>
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   },
   searchLightBorder: {
     borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.08)",
+    // borderColor set dynamically via colors.border
   },
   searchIcon: {
     marginRight: spacing.sm,
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
   },
   toggleLightBorder: {
     borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.08)",
+    // borderColor set dynamically via colors.border
   },
   toggleOption: {
     flex: 1,
@@ -430,10 +430,12 @@ const styles = StyleSheet.create({
   },
   cardLightShadow: {
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.04)",
   },
   cardPressed: {
     opacity: 0.8,
