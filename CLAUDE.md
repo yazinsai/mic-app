@@ -525,8 +525,9 @@ When deploying web apps to dokku-server:
 1. **Domain**: Use `{app-name}.whhite.com` - DNS is pre-configured (no setup needed)
 2. **Create app**: `ssh dokku@dokku-server apps:create {app-name}`
 3. **Add domain**: `ssh dokku@dokku-server domains:add {app-name} {app-name}.whhite.com`
-4. **Deploy**: Push via git or use `dokku git:sync`
-5. **Set deployUrl**: After deployment, update the action with the URL:
+4. **Set port mapping**: `ssh dokku@dokku-server ports:set {app-name} http:80:{internal-port}` (e.g., 3000, 5000)
+5. **Deploy**: Push via git or use `dokku git:sync`
+6. **Set deployUrl**: After deployment, update the action with the URL:
    ```typescript
    await db.transact(db.tx.actions[actionId].update({
      deployUrl: "https://{app-name}.whhite.com",
