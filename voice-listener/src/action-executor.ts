@@ -1,7 +1,7 @@
 import { spawn } from "bun";
 import { join, resolve, isAbsolute } from "path";
 import { mkdir, appendFile } from "fs/promises";
-import { db, lookup } from "./db";
+import { db, id, lookup } from "./db";
 import { initPromptVersioning, getCurrentVersionId } from "./prompt-versioning";
 import { classifyError } from "./error-categories";
 import { loadPrompt } from "./prompt-loader";
@@ -53,13 +53,30 @@ function hasNewUserFeedback(action: Action): boolean {
 
 async function sendHeartbeat(status?: string): Promise<void> {
   try {
-    await db.transact(
-      db.tx.workerHeartbeats[lookup("name", WORKER_NAME)].update({
-        name: WORKER_NAME,
-        lastSeen: Date.now(),
-        status: status ?? null,
-      })
-    );
+    // Check if heartbeat record exists
+    const result = await db.query({
+      workerHeartbeats: { $: { where: { name: WORKER_NAME } } },
+    });
+    const existing = result.workerHeartbeats[0];
+
+    if (existing) {
+      // Update existing record
+      await db.transact(
+        db.tx.workerHeartbeats[existing.id].update({
+          lastSeen: Date.now(),
+          status: status ?? null,
+        })
+      );
+    } else {
+      // Create new record with proper UUID
+      await db.transact(
+        db.tx.workerHeartbeats[id()].update({
+          name: WORKER_NAME,
+          lastSeen: Date.now(),
+          status: status ?? null,
+        })
+      );
+    }
   } catch (error) {
     // Ignore heartbeat errors - non-critical
     console.error("Heartbeat error:", error);
