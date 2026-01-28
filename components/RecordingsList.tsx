@@ -122,7 +122,8 @@ function RecordingItem({
           onPress: () => onDeleteRequest(recording),
         },
         { text: "Cancel", style: "cancel" as const },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
