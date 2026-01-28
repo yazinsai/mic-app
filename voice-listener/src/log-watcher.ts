@@ -1,14 +1,14 @@
 /**
  * Log Watcher - Tails action execution logs and updates InstantDB with progress
  *
- * This script:
- * 1. Polls for in_progress actions that have a logFile path
- * 2. Tails each log file for new content
- * 3. Parses important events (tool uses, todos, thinking summaries)
- * 4. Updates the action's `progress` field in InstantDB
+ * Surfaces what matters:
+ * - Skills being used (important!)
+ * - What Claude says it's doing (assistant messages)
+ * - Current task from todos
+ * - Simple activity timeline
  */
 
-import { resolve, basename } from "path";
+import { basename } from "path";
 import { stat, open } from "fs/promises";
 import { db } from "./db";
 
@@ -19,34 +19,54 @@ interface Action {
   progress?: string;
 }
 
+// Activity types for the timeline
+type ActivityType = "skill" | "tool" | "agent" | "message" | "milestone";
+
+interface Activity {
+  id: string;
+  type: ActivityType;
+  icon: string; // Emoji for whimsy
+  label: string; // Short, human-readable
+  detail?: string; // Optional extra context
+  timestamp: number;
+  duration?: number; // Only for completed items
+  status: "active" | "done" | "error";
+}
+
 interface Progress {
-  currentTask?: string;
-  todos?: Array<{ content: string; status: string }>;
-  recentTools?: Array<{ name: string; timestamp: number }>;
-  lastThinkingSummary?: string;
+  // The most important stuff up top
+  currentActivity?: string; // What's happening RIGHT NOW
+  skills: string[]; // Skills used (badges)
+
+  // Task progress
+  currentTask?: string; // From todos activeForm
+  taskProgress?: { done: number; total: number };
+
+  // Activity feed (timeline)
+  activities: Activity[];
+
+  // Meta
   lastUpdate: number;
 }
 
 interface WatchedFile {
   actionId: string;
   path: string;
-  position: number; // Bytes read so far
+  position: number;
   progress: Progress;
+  buffer: string; // Accumulate partial lines
 }
 
-const POLL_INTERVAL = 2000; // Check for new actions every 2 seconds
-const TAIL_INTERVAL = 500; // Tail logs every 500ms
-const UPDATE_DEBOUNCE = 1000; // Debounce DB updates
+const POLL_INTERVAL = 2000;
+const TAIL_INTERVAL = 500;
+const UPDATE_DEBOUNCE = 800;
+const MAX_ACTIVITIES = 30;
 
-// CLI args
 const args = process.argv.slice(2);
 const ONCE = args.includes("--once");
 const VERBOSE = args.includes("--verbose");
 
-// Track watched files by action ID
 const watchedFiles = new Map<string, WatchedFile>();
-
-// Track pending updates to debounce
 const pendingUpdates = new Map<string, ReturnType<typeof setTimeout>>();
 
 function log(msg: string) {
@@ -54,142 +74,294 @@ function log(msg: string) {
 }
 
 function debug(msg: string) {
-  if (VERBOSE) {
-    console.log(`[log-watcher:debug] ${msg}`);
+  if (VERBOSE) console.log(`[log-watcher:debug] ${msg}`);
+}
+
+let activityCounter = 0;
+function genId(): string {
+  return `a_${Date.now()}_${++activityCounter}`;
+}
+
+// Map tools to friendly names and emojis
+const TOOL_DISPLAY: Record<string, { icon: string; label: string }> = {
+  // Skills & agents get special treatment
+  Skill: { icon: "✨", label: "Using skill" },
+  Task: { icon: "🤖", label: "Running agent" },
+
+  // File operations
+  Read: { icon: "📖", label: "Reading" },
+  Write: { icon: "✏️", label: "Writing" },
+  Edit: { icon: "🔧", label: "Editing" },
+  Glob: { icon: "🔍", label: "Finding files" },
+  Grep: { icon: "🔎", label: "Searching" },
+
+  // Web
+  WebSearch: { icon: "🌐", label: "Searching web" },
+  WebFetch: { icon: "📡", label: "Fetching" },
+
+  // System
+  Bash: { icon: "⚡", label: "Running" },
+  TodoWrite: { icon: "📋", label: "Planning" },
+
+  // Default
+  default: { icon: "⚙️", label: "Working" },
+};
+
+function getToolDisplay(name: string): { icon: string; label: string } {
+  return TOOL_DISPLAY[name] || TOOL_DISPLAY.default;
+}
+
+// Extract meaningful detail from tool parameters
+function extractDetail(toolName: string, line: string): string | undefined {
+  // Skill name
+  if (toolName === "Skill") {
+    const match = line.match(/"skill"\s*:\s*"([^"]+)"/);
+    return match?.[1];
   }
+
+  // Agent description
+  if (toolName === "Task") {
+    const desc = line.match(/"description"\s*:\s*"([^"]+)"/);
+    return desc?.[1];
+  }
+
+  // Bash description
+  if (toolName === "Bash") {
+    const desc = line.match(/"description"\s*:\s*"([^"]+)"/);
+    return desc?.[1];
+  }
+
+  // File path (just filename)
+  if (["Read", "Write", "Edit"].includes(toolName)) {
+    const match = line.match(/"file_path"\s*:\s*"([^"]+)"/);
+    if (match) return basename(match[1]);
+  }
+
+  // Search query
+  if (toolName === "WebSearch") {
+    const match = line.match(/"query"\s*:\s*"([^"]+)"/);
+    if (match) return `"${match[1].slice(0, 50)}${match[1].length > 50 ? "..." : ""}"`;
+  }
+
+  // Glob pattern
+  if (toolName === "Glob") {
+    const match = line.match(/"pattern"\s*:\s*"([^"]+)"/);
+    return match?.[1];
+  }
+
+  return undefined;
+}
+
+// Track active activities for completion matching
+const activeActivities = new Map<string, string>(); // toolUseId -> activityId
+
+function addActivity(progress: Progress, activity: Omit<Activity, "id">): string {
+  const id = genId();
+  progress.activities.push({ id, ...activity });
+
+  // Keep only recent activities
+  if (progress.activities.length > MAX_ACTIVITIES) {
+    progress.activities = progress.activities.slice(-MAX_ACTIVITIES);
+  }
+
+  return id;
+}
+
+function completeActivity(progress: Progress, id: string, status: "done" | "error" = "done"): boolean {
+  const activity = progress.activities.find((a) => a.id === id);
+  if (activity && activity.status === "active") {
+    activity.status = status;
+    activity.duration = Date.now() - activity.timestamp;
+    return true;
+  }
+  return false;
 }
 
 /**
- * Parse a line from the log file and extract important information
+ * Parse a chunk of log content
  */
-function parseLine(line: string, progress: Progress): boolean {
+function parseContent(content: string, progress: Progress): boolean {
   let changed = false;
+  const lines = content.split("\n");
 
-  // Parse tool_use blocks
-  const toolMatch = line.match(/<tool_use name="([^"]+)">/);
-  if (toolMatch) {
-    const toolName = toolMatch[1];
-    if (!progress.recentTools) progress.recentTools = [];
-    progress.recentTools.push({ name: toolName, timestamp: Date.now() });
-    // Keep only last 10 tools
-    if (progress.recentTools.length > 10) {
-      progress.recentTools = progress.recentTools.slice(-10);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+
+    // === SKILL INVOCATION (most important!) ===
+    if (line.includes('<tool_use name="Skill">')) {
+      // Look for skill name in nearby content
+      const skillMatch = content.match(/<tool_use name="Skill">[^}]*"skill"\s*:\s*"([^"]+)"/s);
+      if (skillMatch) {
+        const skillName = skillMatch[1];
+        if (!progress.skills.includes(skillName)) {
+          progress.skills.push(skillName);
+          debug(`Skill used: ${skillName}`);
+        }
+        const display = getToolDisplay("Skill");
+        const activityId = addActivity(progress, {
+          type: "skill",
+          icon: display.icon,
+          label: display.label,
+          detail: skillName,
+          timestamp: Date.now(),
+          status: "active",
+        });
+        progress.currentActivity = `Using ${skillName}`;
+        changed = true;
+      }
     }
-    changed = true;
-    debug(`Tool use: ${toolName}`);
-  }
 
-  // Parse TodoWrite tool to extract todos
-  if (line.includes('"todos":') || line.includes('"content":')) {
-    try {
-      // Try to find JSON in the line
-      const jsonMatch = line.match(/\{[\s\S]*"todos"[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.todos && Array.isArray(parsed.todos)) {
-          progress.todos = parsed.todos.map((t: { content: string; status: string }) => ({
-            content: t.content,
-            status: t.status,
-          }));
-          // Find current task (in_progress)
-          const current = parsed.todos.find((t: { status: string }) => t.status === "in_progress");
+    // === TOOL USE ===
+    const toolMatch = line.match(/<tool_use name="([^"]+)">/);
+    if (toolMatch && toolMatch[1] !== "Skill") {
+      const toolName = toolMatch[1];
+      const display = getToolDisplay(toolName);
+      const detail = extractDetail(toolName, content);
+
+      // Determine activity type
+      let type: ActivityType = "tool";
+      if (toolName === "Task") type = "agent";
+
+      const activityId = addActivity(progress, {
+        type,
+        icon: display.icon,
+        label: display.label,
+        detail,
+        timestamp: Date.now(),
+        status: "active",
+      });
+
+      // Set current activity with detail
+      if (detail) {
+        progress.currentActivity = `${display.label}: ${detail}`;
+      } else {
+        progress.currentActivity = display.label;
+      }
+
+      // Track for completion
+      const toolIdMatch = line.match(/"id"\s*:\s*"([^"]+)"/);
+      if (toolIdMatch) {
+        activeActivities.set(toolIdMatch[1], activityId);
+      }
+
+      changed = true;
+      debug(`Tool: ${toolName} ${detail ? `(${detail})` : ""}`);
+    }
+
+    // === TOOL RESULT (completion) ===
+    if (line.includes("<tool_result>") || line.includes('"tool_result"')) {
+      const toolIdMatch = line.match(/"tool_use_id"\s*:\s*"([^"]+)"/);
+      if (toolIdMatch) {
+        const activityId = activeActivities.get(toolIdMatch[1]);
+        if (activityId) {
+          // Check if it's an error
+          const isError = line.includes('"is_error":true') || line.includes('"is_error": true');
+          completeActivity(progress, activityId, isError ? "error" : "done");
+          activeActivities.delete(toolIdMatch[1]);
+          changed = true;
+        }
+      }
+    }
+
+    // === TODOS (task progress) ===
+    const todoEventMatch = line.match(/<!-- event:.*"tool_use_result":\s*(\{[^}]*"newTodos"[^}]*\})/);
+    if (todoEventMatch || line.includes('"newTodos"')) {
+      try {
+        // Try to parse todos from the line
+        const todosMatch = content.match(/"newTodos"\s*:\s*\[([\s\S]*?)\]/);
+        if (todosMatch) {
+          const todosStr = `[${todosMatch[1]}]`;
+          const todos = JSON.parse(todosStr) as Array<{ content: string; status: string; activeForm?: string }>;
+
+          // Update task progress
+          const done = todos.filter((t) => t.status === "completed").length;
+          progress.taskProgress = { done, total: todos.length };
+
+          // Find current task
+          const current = todos.find((t) => t.status === "in_progress");
           if (current) {
             progress.currentTask = current.activeForm || current.content;
+
+            // Add milestone for new task
+            addActivity(progress, {
+              type: "milestone",
+              icon: "📌",
+              label: current.activeForm || current.content,
+              timestamp: Date.now(),
+              status: "active",
+            });
           }
+
           changed = true;
-          debug(`Todos updated: ${progress.todos?.length ?? 0} items`);
+          debug(`Tasks: ${done}/${todos.length}`);
         }
+      } catch {
+        // Ignore parse errors
       }
-    } catch {
-      // Not valid JSON, ignore
     }
-  }
 
-  // Parse thinking blocks - extract first line as summary
-  const thinkingMatch = line.match(/<thinking>\n?(.*)/);
-  if (thinkingMatch && thinkingMatch[1]) {
-    const summary = thinkingMatch[1].slice(0, 200);
-    if (summary.trim()) {
-      progress.lastThinkingSummary = summary;
-      changed = true;
-      debug(`Thinking: ${summary.slice(0, 50)}...`);
-    }
-  }
+    // === ASSISTANT MESSAGE (what Claude says) ===
+    // These appear as plain text between tool blocks
+    // Look for sentences that describe intent
+    if (
+      !line.startsWith("<") &&
+      !line.startsWith("{") &&
+      !line.startsWith("<!--") &&
+      line.length > 20 &&
+      line.length < 200
+    ) {
+      // Check if it looks like an intent message
+      const intentPatterns = [
+        /^(I'll|I will|Let me|Now I|First,|Next,)/i,
+        /^(Creating|Building|Implementing|Setting up|Adding)/i,
+        /^(This will|This should|This creates)/i,
+      ];
 
-  // Parse event comments for tool results with newTodos
-  const eventMatch = line.match(/<!-- event: (\{.*\}) -->/);
-  if (eventMatch) {
-    try {
-      const event = JSON.parse(eventMatch[1]);
-      if (event.tool_use_result?.newTodos) {
-        progress.todos = event.tool_use_result.newTodos.map((t: { content: string; status: string }) => ({
-          content: t.content,
-          status: t.status,
-        }));
-        const current = event.tool_use_result.newTodos.find(
-          (t: { status: string }) => t.status === "in_progress"
-        );
-        if (current) {
-          progress.currentTask = current.activeForm || current.content;
-        }
+      const isIntent = intentPatterns.some((p) => p.test(line.trim()));
+      if (isIntent) {
+        const message = line.trim().slice(0, 100);
+        addActivity(progress, {
+          type: "message",
+          icon: "💭",
+          label: message,
+          timestamp: Date.now(),
+          status: "done", // Messages are instant
+        });
+        progress.currentActivity = message;
         changed = true;
-        debug(`Todos from event: ${progress.todos?.length ?? 0} items`);
+        debug(`Message: ${message.slice(0, 50)}...`);
       }
-    } catch {
-      // Not valid JSON, ignore
     }
   }
 
   return changed;
 }
 
-/**
- * Tail a log file from the last known position
- */
 async function tailFile(watched: WatchedFile): Promise<boolean> {
   try {
     const stats = await stat(watched.path);
-    if (stats.size <= watched.position) {
-      return false; // No new content
-    }
+    if (stats.size <= watched.position) return false;
 
-    // Read new content
     const fileHandle = await open(watched.path, "r");
     const buffer = Buffer.alloc(stats.size - watched.position);
     await fileHandle.read(buffer, 0, buffer.length, watched.position);
     await fileHandle.close();
 
     const newContent = buffer.toString("utf-8");
-    const lines = newContent.split("\n");
-
-    let changed = false;
-    for (const line of lines) {
-      if (parseLine(line, watched.progress)) {
-        changed = true;
-      }
-    }
-
     watched.position = stats.size;
     watched.progress.lastUpdate = Date.now();
 
-    return changed;
+    return parseContent(newContent, watched.progress);
   } catch (error) {
     debug(`Error tailing ${watched.path}: ${error}`);
     return false;
   }
 }
 
-/**
- * Update the action's progress field in InstantDB (debounced)
- */
 function scheduleUpdate(actionId: string, progress: Progress) {
-  // Cancel any pending update
   const existing = pendingUpdates.get(actionId);
-  if (existing) {
-    clearTimeout(existing);
-  }
+  if (existing) clearTimeout(existing);
 
-  // Schedule new update
   const timeout = setTimeout(async () => {
     pendingUpdates.delete(actionId);
     try {
@@ -198,7 +370,7 @@ function scheduleUpdate(actionId: string, progress: Progress) {
           progress: JSON.stringify(progress),
         })
       );
-      debug(`Updated progress for action ${actionId}`);
+      debug(`Updated progress for ${actionId}`);
     } catch (error) {
       console.error(`Failed to update progress for ${actionId}:`, error);
     }
@@ -207,47 +379,41 @@ function scheduleUpdate(actionId: string, progress: Progress) {
   pendingUpdates.set(actionId, timeout);
 }
 
-/**
- * Poll for in_progress actions and start watching their log files
- */
 async function pollForActions(): Promise<number> {
   try {
     const result = await db.query({
       actions: {
-        $: {
-          where: {
-            status: "in_progress",
-          },
-        },
+        $: { where: { status: "in_progress" } },
       },
     });
 
     const actions = (result.actions ?? []) as Action[];
     let newWatches = 0;
 
-    // Start watching any new actions with log files
     for (const action of actions) {
       if (action.logFile && !watchedFiles.has(action.id)) {
-        log(`Starting to watch: ${basename(action.logFile)}`);
+        log(`Watching: ${basename(action.logFile)}`);
         watchedFiles.set(action.id, {
           actionId: action.id,
           path: action.logFile,
           position: 0,
           progress: {
+            skills: [],
+            activities: [],
             lastUpdate: Date.now(),
           },
+          buffer: "",
         });
         newWatches++;
       }
     }
 
-    // Stop watching completed/failed actions
+    // Stop watching completed actions
     const activeIds = new Set(actions.map((a) => a.id));
     for (const [actionId, watched] of watchedFiles) {
       if (!activeIds.has(actionId)) {
-        log(`Stopped watching: ${basename(watched.path)} (action no longer in_progress)`);
+        log(`Stopped: ${basename(watched.path)}`);
         watchedFiles.delete(actionId);
-        // Cancel any pending update
         const pending = pendingUpdates.get(actionId);
         if (pending) {
           clearTimeout(pending);
@@ -263,9 +429,6 @@ async function pollForActions(): Promise<number> {
   }
 }
 
-/**
- * Tail all watched files
- */
 async function tailAll(): Promise<void> {
   for (const [actionId, watched] of watchedFiles) {
     const changed = await tailFile(watched);
@@ -275,39 +438,29 @@ async function tailAll(): Promise<void> {
   }
 }
 
-function printUsage(): void {
-  console.log(`
-Log Watcher - Tail action logs and update InstantDB with progress
+async function main(): Promise<void> {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(`
+Log Watcher - Surface what Claude is doing
 
 Usage: bun run src/log-watcher.ts [options]
 
 Options:
   --once      Process once and exit
   --verbose   Show debug output
-
-This script watches for in_progress actions with a logFile path,
-tails the log files, parses important events (tool uses, todos, etc.),
-and updates the action's progress field in InstantDB.
 `);
-}
-
-async function main(): Promise<void> {
-  if (args.includes("--help") || args.includes("-h")) {
-    printUsage();
     process.exit(0);
   }
 
   log("Starting...");
-  if (ONCE) log("  Mode: ONCE (will exit after processing)");
-  if (VERBOSE) log("  Verbose: ENABLED");
+  if (ONCE) log("  Mode: ONCE");
+  if (VERBOSE) log("  Verbose: ON");
 
-  // Initial poll
   await pollForActions();
 
   if (ONCE) {
-    // Do one round of tailing
     await tailAll();
-    // Flush any pending updates
+    // Flush pending updates
     for (const [actionId, timeout] of pendingUpdates) {
       clearTimeout(timeout);
       const watched = watchedFiles.get(actionId);
@@ -323,11 +476,10 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Set up polling intervals
   setInterval(pollForActions, POLL_INTERVAL);
   setInterval(tailAll, TAIL_INTERVAL);
 
-  log(`Watching for action logs (poll: ${POLL_INTERVAL / 1000}s, tail: ${TAIL_INTERVAL}ms)...`);
+  log(`Watching (poll: ${POLL_INTERVAL / 1000}s, tail: ${TAIL_INTERVAL}ms)...`);
 }
 
 main().catch(console.error);

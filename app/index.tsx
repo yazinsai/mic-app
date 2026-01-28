@@ -138,30 +138,39 @@ function parseMessages(json: string | undefined | null): ThreadMessage[] {
   }
 }
 
-interface TimelineEntry {
+// Activity types for the whimsical timeline
+type ActivityType = "skill" | "tool" | "agent" | "message" | "milestone";
+
+interface Activity {
   id: string;
-  name: string;
-  type: "tool" | "skill" | "subagent" | "thinking";
-  status: "running" | "completed" | "failed";
-  startedAt: number;
-  completedAt?: number;
+  type: ActivityType;
+  icon: string; // Emoji
+  label: string;
+  detail?: string;
+  timestamp: number;
   duration?: number;
-  description?: string;
+  status: "active" | "done" | "error";
 }
 
 interface Progress {
+  currentActivity?: string;
+  skills: string[];
   currentTask?: string;
-  todos?: Array<{ content: string; status: string }>;
-  recentTools?: Array<{ name: string; timestamp: number }>;
-  lastThinkingSummary?: string;
+  taskProgress?: { done: number; total: number };
+  activities: Activity[];
   lastUpdate: number;
-  timeline?: TimelineEntry[];
 }
 
 function parseProgress(json: string | undefined | null): Progress | null {
   if (!json) return null;
   try {
-    return JSON.parse(json) as Progress;
+    const parsed = JSON.parse(json);
+    // Provide defaults for required array fields
+    return {
+      ...parsed,
+      skills: parsed.skills ?? [],
+      activities: parsed.activities ?? [],
+    } as Progress;
   } catch {
     return null;
   }
@@ -603,170 +612,115 @@ export default function HomeScreen() {
                 }
                 return (
                   <View style={[styles.progressSection, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30" }]}>
+                    {/* Header with task progress */}
                     <View style={styles.progressHeader}>
                       <View style={[styles.progressDot, { backgroundColor: colors.primary }]} />
-                      <Text style={[styles.progressLabel, { color: colors.primary }]}>Live Progress</Text>
+                      <Text style={[styles.progressLabel, { color: colors.primary }]}>
+                        {progress.taskProgress
+                          ? `Working... ${progress.taskProgress.done}/${progress.taskProgress.total}`
+                          : "Working..."}
+                      </Text>
                     </View>
 
-                    {/* Current Task */}
-                    {progress.currentTask && (
-                      <View style={[styles.currentTaskBox, { backgroundColor: colors.background }]}>
-                        <Ionicons name="cog" size={16} color={colors.primary} />
-                        <Text style={[styles.currentTaskText, { color: colors.textPrimary }]}>{progress.currentTask}</Text>
-                      </View>
-                    )}
-
-                    {/* Todo List */}
-                    {progress.todos && progress.todos.length > 0 && (
-                      <View style={[styles.todosBox, { backgroundColor: colors.background }]}>
-                        {progress.todos.map((todo, idx) => (
-                          <View key={idx} style={styles.todoItem}>
-                            <Ionicons
-                              name={
-                                todo.status === "completed"
-                                  ? "checkmark-circle"
-                                  : todo.status === "in_progress"
-                                  ? "ellipse"
-                                  : "ellipse-outline"
-                              }
-                              size={14}
-                              color={
-                                todo.status === "completed"
-                                  ? colors.success
-                                  : todo.status === "in_progress"
-                                  ? colors.primary
-                                  : colors.textMuted
-                              }
-                            />
-                            <Text
-                              style={[
-                                styles.todoText,
-                                { color: colors.textSecondary },
-                                todo.status === "completed" && { color: colors.textMuted, textDecorationLine: "line-through" },
-                                todo.status === "in_progress" && { color: colors.primary, fontWeight: "500" },
-                              ]}
-                            >
-                              {todo.content}
-                            </Text>
+                    {/* Skills badges (prominent!) */}
+                    {progress.skills && progress.skills.length > 0 && (
+                      <View style={styles.skillsBadges}>
+                        {progress.skills.map((skill, idx) => (
+                          <View key={idx} style={[styles.skillBadge, { backgroundColor: colors.primary + "20" }]}>
+                            <Text style={styles.skillBadgeIcon}>✨</Text>
+                            <Text style={[styles.skillBadgeText, { color: colors.primary }]}>{skill}</Text>
                           </View>
                         ))}
                       </View>
                     )}
 
-                    {/* Timeline View */}
-                    {progress.timeline && progress.timeline.length > 0 && (
-                      <View style={styles.timelineBox}>
-                        <Text style={[styles.timelineLabel, { color: colors.textMuted }]}>Timeline:</Text>
-                        <View style={styles.timelineList}>
-                          {progress.timeline.slice(-15).reverse().map((entry) => {
-                            const isRunning = entry.status === "running";
-                            const isFailed = entry.status === "failed";
-                            const statusColor = isRunning
-                              ? colors.primary
-                              : isFailed
-                              ? colors.error
-                              : colors.success;
-                            const typeIcon = entry.type === "subagent"
-                              ? "git-branch"
-                              : entry.type === "skill"
-                              ? "flash"
-                              : entry.type === "thinking"
-                              ? "bulb"
-                              : "code-slash";
-                            return (
-                              <View key={entry.id} style={styles.timelineEntry}>
-                                <View style={[styles.timelineIndicator, { borderColor: statusColor }]}>
-                                  {isRunning ? (
-                                    <View style={[styles.timelinePulse, { backgroundColor: statusColor }]} />
-                                  ) : (
-                                    <Ionicons
-                                      name={isFailed ? "close" : "checkmark"}
-                                      size={10}
-                                      color={statusColor}
-                                    />
-                                  )}
-                                </View>
-                                <View style={styles.timelineContent}>
-                                  <View style={styles.timelineHeader}>
-                                    <View style={styles.timelineNameRow}>
-                                      <Ionicons name={typeIcon as any} size={12} color={colors.textMuted} />
-                                      <Text style={[styles.timelineName, { color: colors.textPrimary }]} numberOfLines={1}>
-                                        {entry.name}
-                                      </Text>
-                                    </View>
-                                    <Text style={[styles.timelineDuration, { color: statusColor }]}>
-                                      {isRunning ? formatDuration(undefined, entry.startedAt) : formatDuration(entry.duration)}
-                                    </Text>
-                                  </View>
-                                  <Text style={[styles.timelineStatus, { color: colors.textMuted }]}>
-                                    {isRunning ? "Running" : isFailed ? "Failed" : "Completed"}
-                                  </Text>
-                                </View>
-                              </View>
-                            );
-                          })}
-                        </View>
+                    {/* Current activity (what's happening now) */}
+                    {progress.currentActivity && (
+                      <View style={[styles.currentActivityBox, { backgroundColor: colors.background }]}>
+                        <Text style={[styles.currentActivityText, { color: colors.textPrimary }]}>
+                          {progress.currentActivity}
+                        </Text>
                       </View>
                     )}
 
-                    {/* Thinking Summary */}
-                    {progress.lastThinkingSummary && (
-                      <View style={[styles.thinkingBox, { backgroundColor: colors.background }]}>
-                        <Text style={[styles.thinkingLabel, { color: colors.textMuted }]}>Thinking:</Text>
-                        <Text style={[styles.thinkingText, { color: colors.textSecondary }]} numberOfLines={3}>
-                          {progress.lastThinkingSummary}
-                        </Text>
+                    {/* Activity feed (whimsical timeline) */}
+                    {progress.activities && progress.activities.length > 0 && (
+                      <View style={styles.activityFeed}>
+                        {progress.activities.slice(-12).reverse().map((activity) => {
+                          const isActive = activity.status === "active";
+                          const isError = activity.status === "error";
+                          const opacity = isActive ? 1 : 0.7;
+                          return (
+                            <View key={activity.id} style={[styles.activityRow, { opacity }]}>
+                              <Text style={styles.activityIcon}>{activity.icon}</Text>
+                              <View style={styles.activityContent}>
+                                <Text
+                                  style={[
+                                    styles.activityLabel,
+                                    { color: isError ? colors.error : isActive ? colors.textPrimary : colors.textSecondary },
+                                  ]}
+                                  numberOfLines={2}
+                                >
+                                  {activity.detail ? `${activity.label}: ${activity.detail}` : activity.label}
+                                </Text>
+                              </View>
+                              {activity.duration && (
+                                <Text style={[styles.activityDuration, { color: colors.textMuted }]}>
+                                  {formatDuration(activity.duration)}
+                                </Text>
+                              )}
+                              {isActive && (
+                                <View style={[styles.activityPulse, { backgroundColor: colors.primary }]} />
+                              )}
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </View>
                 );
               })()}
 
-              {/* Timeline History (for completed/failed/cancelled actions) */}
+              {/* Activity History (for completed/failed/cancelled actions) */}
               {selectedAction.status !== "in_progress" && (() => {
                 const progress = parseProgress(selectedAction.progress);
-                if (!progress?.timeline || progress.timeline.length === 0) return null;
+                if (!progress?.activities || progress.activities.length === 0) return null;
                 return (
-                  <View style={[styles.timelineHistorySection, { borderColor: colors.border }]}>
-                    <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Execution Timeline</Text>
-                    <View style={styles.timelineList}>
-                      {progress.timeline.slice(-20).reverse().map((entry) => {
-                        const isRunning = entry.status === "running";
-                        const isFailed = entry.status === "failed";
-                        const statusColor = isRunning
-                          ? colors.warning
-                          : isFailed
-                          ? colors.error
-                          : colors.success;
-                        const typeIcon = entry.type === "subagent"
-                          ? "git-branch"
-                          : entry.type === "skill"
-                          ? "flash"
-                          : entry.type === "thinking"
-                          ? "bulb"
-                          : "code-slash";
+                  <View style={[styles.activityHistorySection, { borderColor: colors.border }]}>
+                    <View style={styles.historyHeader}>
+                      <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Activity Log</Text>
+                      {progress.skills && progress.skills.length > 0 && (
+                        <View style={styles.skillsBadgesSmall}>
+                          {progress.skills.map((skill, idx) => (
+                            <View key={idx} style={[styles.skillBadgeSmall, { backgroundColor: colors.primary + "15" }]}>
+                              <Text style={[styles.skillBadgeTextSmall, { color: colors.primary }]}>✨ {skill}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.activityFeed}>
+                      {progress.activities.slice(-15).reverse().map((activity) => {
+                        const isError = activity.status === "error";
                         return (
-                          <View key={entry.id} style={styles.timelineEntry}>
-                            <View style={[styles.timelineIndicator, { borderColor: statusColor }]}>
-                              <Ionicons
-                                name={isFailed ? "close" : isRunning ? "ellipse" : "checkmark"}
-                                size={isRunning ? 6 : 10}
-                                color={statusColor}
-                              />
+                          <View key={activity.id} style={styles.activityRow}>
+                            <Text style={styles.activityIcon}>{activity.icon}</Text>
+                            <View style={styles.activityContent}>
+                              <Text
+                                style={[
+                                  styles.activityLabel,
+                                  { color: isError ? colors.error : colors.textSecondary },
+                                ]}
+                                numberOfLines={2}
+                              >
+                                {activity.detail ? `${activity.label}: ${activity.detail}` : activity.label}
+                              </Text>
                             </View>
-                            <View style={styles.timelineContent}>
-                              <View style={styles.timelineHeader}>
-                                <View style={styles.timelineNameRow}>
-                                  <Ionicons name={typeIcon as any} size={12} color={colors.textMuted} />
-                                  <Text style={[styles.timelineName, { color: colors.textPrimary }]} numberOfLines={1}>
-                                    {entry.name}
-                                  </Text>
-                                </View>
-                                <Text style={[styles.timelineDuration, { color: colors.textMuted }]}>
-                                  {formatDuration(entry.duration)}
-                                </Text>
-                              </View>
-                            </View>
+                            {activity.duration && (
+                              <Text style={[styles.activityDuration, { color: colors.textMuted }]}>
+                                {formatDuration(activity.duration)}
+                              </Text>
+                            )}
                           </View>
                         );
                       })}
@@ -1079,123 +1033,100 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     fontStyle: "italic",
   },
-  currentTaskBox: {
+  // Skills badges (prominent!)
+  skillsBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  skillBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    marginBottom: spacing.md,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.full,
   },
-  currentTaskText: {
-    flex: 1,
-    fontSize: typography.sm,
-    fontWeight: "500",
+  skillBadgeIcon: {
+    fontSize: 12,
   },
-  todosBox: {
-    borderRadius: radii.sm,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  todoItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  todoText: {
-    flex: 1,
-    fontSize: typography.sm,
-    lineHeight: typography.sm * 1.4,
-  },
-  recentToolsBox: {
-    marginBottom: spacing.md,
-  },
-  recentToolsLabel: {
+  skillBadgeText: {
     fontSize: typography.xs,
-    marginBottom: spacing.xs,
+    fontWeight: "600",
   },
-  toolsRow: {
+  skillsBadgesSmall: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.xs,
   },
-  toolBadge: {
+  skillBadgeSmall: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
-    borderRadius: radii.sm,
+    borderRadius: radii.full,
   },
-  toolBadgeText: {
+  skillBadgeTextSmall: {
     fontSize: typography.xs,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontWeight: "500",
   },
-  // Timeline styles
-  timelineHistorySection: {
-    marginBottom: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-  },
-  timelineBox: {
+  // Current activity (what's happening now)
+  currentActivityBox: {
+    padding: spacing.sm,
+    borderRadius: radii.sm,
     marginBottom: spacing.md,
   },
-  timelineLabel: {
-    fontSize: typography.xs,
-    marginBottom: spacing.sm,
-    fontWeight: "600",
+  currentActivityText: {
+    fontSize: typography.sm,
+    fontWeight: "500",
+    lineHeight: typography.sm * 1.4,
   },
-  timelineList: {
+  // Whimsical activity feed
+  activityFeed: {
     gap: spacing.xs,
   },
-  timelineEntry: {
+  activityRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
-  timelineIndicator: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
+  activityIcon: {
+    fontSize: 16,
+    width: 22,
+    textAlign: "center",
   },
-  timelinePulse: {
+  activityContent: {
+    flex: 1,
+  },
+  activityLabel: {
+    fontSize: typography.sm,
+    lineHeight: typography.sm * 1.4,
+  },
+  activityDuration: {
+    fontSize: typography.xs,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  activityPulse: {
     width: 6,
     height: 6,
     borderRadius: 3,
+    marginTop: 6,
   },
-  timelineContent: {
-    flex: 1,
+  // Activity history section
+  activityHistorySection: {
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
   },
-  timelineHeader: {
+  historyHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  timelineNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    flex: 1,
-  },
-  timelineName: {
-    fontSize: typography.sm,
-    fontWeight: "500",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    flex: 1,
-  },
-  timelineDuration: {
-    fontSize: typography.xs,
-    fontWeight: "600",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-  timelineStatus: {
-    fontSize: typography.xs,
-    marginTop: 1,
-  },
+  // Legacy styles kept for backward compat
   thinkingBox: {
     borderRadius: radii.sm,
     padding: spacing.sm,
