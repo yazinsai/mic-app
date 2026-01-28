@@ -106,6 +106,39 @@ async function handleUpload(id: string, localFilePath: string): Promise<void> {
   }
 }
 
+/**
+ * Build a vocabulary prompt from user-defined terms.
+ * Groq Whisper's prompt param is limited to 224 tokens (~900 chars).
+ */
+async function buildVocabularyPrompt(): Promise<string | undefined> {
+  try {
+    const result = await db.queryOnce({
+      vocabularyTerms: {
+        $: { order: { createdAt: "asc" } },
+      },
+    });
+
+    const terms = result.data.vocabularyTerms;
+    if (!terms || terms.length === 0) {
+      return undefined;
+    }
+
+    // Join terms with commas, prefixed with context
+    const termsList = terms.map((t) => t.term).join(", ");
+    const prompt = `Vocabulary: ${termsList}`;
+
+    // Limit to ~800 chars to stay safely under 224 token limit
+    if (prompt.length > 800) {
+      return prompt.slice(0, 800);
+    }
+
+    return prompt;
+  } catch (error) {
+    console.warn("Failed to fetch vocabulary terms:", error);
+    return undefined;
+  }
+}
+
 async function handleTranscription(
   id: string,
   localFilePath: string
@@ -128,7 +161,10 @@ async function handleTranscription(
       );
     }
 
-    const transcription = await transcribeAudio(localFilePath);
+    // Build vocabulary prompt from user-defined terms
+    const vocabularyPrompt = await buildVocabularyPrompt();
+
+    const transcription = await transcribeAudio(localFilePath, vocabularyPrompt);
 
     // Generate a short title from the transcription
     let title: string | undefined;

@@ -25,8 +25,11 @@ import { BottomNavBar } from "@/components/BottomNavBar";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { VersionBadge } from "@/components/VersionBadge";
 import { RatingSection } from "@/components/RatingSection";
+import { SettingsModal } from "@/components/SettingsModal";
+import { VocabularyScreen } from "@/components/VocabularyScreen";
 import { useQueue } from "@/hooks/useQueue";
 import { useRecorder } from "@/hooks/useRecorder";
+import { useVocabulary } from "@/hooks/useVocabulary";
 import type { Recording } from "@/lib/queue";
 import type { Action } from "@/components/ActionItem";
 
@@ -135,6 +138,10 @@ function parseProgress(json: string | undefined | null): Progress | null {
 export default function HomeScreen() {
   const { colors, isDark } = useThemeColors();
   const [activeTab, setActiveTab] = useState<TabKey>("actions");
+  const [showSettings, setShowSettings] = useState(false);
+  const [showVocabulary, setShowVocabulary] = useState(false);
+
+  const { terms: vocabularyTerms } = useVocabulary();
 
   const {
     recordings,
@@ -371,6 +378,17 @@ export default function HomeScreen() {
             <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
           )}
           <VersionBadge />
+          <Pressable
+            onPress={() => setShowSettings(true)}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              { backgroundColor: colors.backgroundElevated },
+              pressed && { opacity: 0.7 },
+              !isDark && styles.settingsButtonLight,
+            ]}
+          >
+            <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
+          </Pressable>
         </View>
       </View>
 
@@ -405,6 +423,20 @@ export default function HomeScreen() {
         onPauseResume={handlePauseResume}
         onStop={stopRecording}
         onDelete={cancelRecording}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+        onVocabularyPress={() => setShowVocabulary(true)}
+        vocabularyCount={vocabularyTerms.length}
+      />
+
+      {/* Vocabulary Screen */}
+      <VocabularyScreen
+        visible={showVocabulary}
+        onClose={() => setShowVocabulary(false)}
       />
 
       {/* Action Detail/Feedback Modal */}
@@ -756,6 +788,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+  },
+  settingsButton: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsButtonLight: {
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.08)",
   },
   content: {
     flex: 1,

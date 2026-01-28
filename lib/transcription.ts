@@ -1,6 +1,11 @@
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 
-export async function transcribeAudio(localFilePath: string): Promise<string> {
+/**
+ * Transcribe audio using Groq's Whisper API.
+ * @param localFilePath - Path to the audio file
+ * @param prompt - Optional prompt to guide transcription spelling (max 224 tokens)
+ */
+export async function transcribeAudio(localFilePath: string, prompt?: string): Promise<string> {
   const apiKey = process.env.EXPO_PUBLIC_GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("GROQ_API_KEY is not configured");
@@ -17,6 +22,11 @@ export async function transcribeAudio(localFilePath: string): Promise<string> {
   formData.append("file", file);
   formData.append("model", "whisper-large-v3");
   formData.append("response_format", "text");
+
+  // Add vocabulary prompt if provided
+  if (prompt) {
+    formData.append("prompt", prompt);
+  }
 
   const response = await fetch(GROQ_API_URL, {
     method: "POST",

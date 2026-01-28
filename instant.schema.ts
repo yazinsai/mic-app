@@ -101,6 +101,10 @@ const _schema = i.schema({
       avgRating: i.number().optional(),
       successRate: i.number().optional(),
     }),
+    vocabularyTerms: i.entity({
+      term: i.string().indexed(), // The correct spelling
+      createdAt: i.number().indexed(),
+    }),
   },
   rooms: {},
   links: {
