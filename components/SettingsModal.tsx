@@ -51,34 +51,22 @@ export function SettingsModal({
               onVocabularyPress();
             }}
           >
-            <View style={styles.menuItemLeft}>
-              <View
-                style={[
-                  styles.iconContainer,
-                  { backgroundColor: colors.primary + "20" },
-                ]}
-              >
-                <Ionicons name="text" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.menuItemText}>
-                <Text style={[styles.menuItemTitle, { color: colors.textPrimary }]}>
-                  Vocabulary
-                </Text>
-                <Text style={[styles.menuItemSubtitle, { color: colors.textMuted }]}>
-                  Custom terms for transcription
-                </Text>
-              </View>
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: colors.primary + "20" },
+              ]}
+            >
+              <Ionicons name="text" size={18} color={colors.primary} />
             </View>
-            <View style={styles.menuItemRight}>
-              <Text style={[styles.countBadge, { color: colors.textMuted }]}>
-                {vocabularyCount} {vocabularyCount === 1 ? "term" : "terms"}
-              </Text>
-              <Ionicons
-                name="chevron-forward"
-                size={18}
-                color={colors.textMuted}
-              />
-            </View>
+            <Text style={[styles.countBadge, { color: colors.textMuted }]}>
+              {vocabularyCount} {vocabularyCount === 1 ? "term" : "terms"}
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textMuted}
+            />
           </Pressable>
         </View>
       </Pressable>
@@ -111,14 +99,9 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: spacing.md,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-  },
-  menuItemLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
   },
   iconContainer: {
     width: 36,
@@ -126,25 +109,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: spacing.md,
-  },
-  menuItemText: {
-    flex: 1,
-  },
-  menuItemTitle: {
-    fontSize: typography.base,
-    fontWeight: "500",
-  },
-  menuItemSubtitle: {
-    fontSize: typography.xs,
-    marginTop: 2,
-  },
-  menuItemRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
   },
   countBadge: {
-    fontSize: typography.xs,
+    fontSize: typography.sm,
+    flex: 1,
   },
 });

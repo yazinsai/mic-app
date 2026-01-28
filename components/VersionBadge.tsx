@@ -86,13 +86,28 @@ export function VersionBadge() {
 
   const badgeInfo = getBadgeInfo();
 
+  const handleBadgePress = () => {
+    // If update available, start download immediately
+    if (updateStatus === "available") {
+      handleApplyUpdate();
+    } else {
+      // Otherwise show details modal
+      setShowDetails(true);
+    }
+  };
+
   return (
     <>
       <Pressable
-        onPress={() => setShowDetails(true)}
+        onPress={handleBadgePress}
+        disabled={updateStatus === "downloading" || updateStatus === "ready"}
         style={[styles.badge, { backgroundColor: colors.backgroundElevated }, !isDark && styles.badgeLightBorder]}
       >
-        <View style={[styles.dot, { backgroundColor: badgeInfo.dotColor }]} />
+        {updateStatus === "downloading" ? (
+          <ActivityIndicator size={10} color={badgeInfo.color} />
+        ) : (
+          <View style={[styles.dot, { backgroundColor: badgeInfo.dotColor }]} />
+        )}
         <Text style={[styles.badgeText, { color: badgeInfo.color }]}>{badgeInfo.label}</Text>
       </Pressable>
 

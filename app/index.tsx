@@ -178,7 +178,7 @@ function parseProgress(json: string | undefined | null): Progress | null {
 
 export default function HomeScreen() {
   const { colors, isDark } = useThemeColors();
-  const [activeTab, setActiveTab] = useState<TabKey>("actions");
+  const [activeTab, setActiveTab] = useState<TabKey>("recordings");
   const [showSettings, setShowSettings] = useState(false);
   const [showVocabulary, setShowVocabulary] = useState(false);
 
