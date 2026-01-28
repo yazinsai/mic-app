@@ -11,11 +11,10 @@ ACTION DETAILS:
 
 INSTRUCTIONS:
 1. **Working Directory**: {{WORKING_DIR_INSTRUCTION}}
-2. **Notes**: Store documentation, research, and planning notes in workspace/notes/ (use relative path from current directory).
-3. Read {{WORKSPACE_CLAUDE_PATH}} for detailed guidelines on handling different action types. Also check for project-specific CLAUDE.md files if present.
-4. Execute this {{ACTION_TYPE}} action appropriately:
+2. Read {{WORKSPACE_CLAUDE_PATH}} for detailed guidelines on handling different action types. Also check for project-specific CLAUDE.md files if present.
+3. Execute this {{ACTION_TYPE}} action appropriately:
 {{TYPE_SPECIFIC_INSTRUCTION}}
-5. **Update action status via CLI** - IMPORTANT: Do NOT create .ts files for updating actions. Use these CLI commands:
+4. **Update action status via CLI** - IMPORTANT: Do NOT create .ts files for updating actions. Use these CLI commands:
 
    # Update result (simple)
    bun run {{CLI_SCRIPT_PATH}} "{{ACTION_ID}}" result "Your result text here"
@@ -36,7 +35,7 @@ INSTRUCTIONS:
    # Update multiple fields at once (JSON)
    bun run {{CLI_SCRIPT_PATH}} "{{ACTION_ID}}" json '{"status":"completed","result":"Done!","deployUrl":"https://..."}'
 
-6. When done, set status to "completed"
+5. When done, set status to "completed"
 
 CRITICAL SAFEGUARDS - DO NOT VIOLATE:
 - DO NOT push InstantDB schema changes (no `npx instant-cli push schema`)

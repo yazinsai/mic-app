@@ -5,7 +5,6 @@ This workspace is used by the voice-to-action system. Claude Code executes actio
 ## Working Directory
 
 - **Projects**: `workspace/projects/` - Contains existing projects that Claude will work on
-- **Notes**: `workspace/notes/` - Documentation, research, and planning notes
 
 ## Action Types
 
