@@ -528,6 +528,13 @@ export default function HomeScreen() {
                     </View>
                   );
                 })()}
+                {selectedAction.type === "CodeChange" && selectedAction.subtype && (
+                  <View style={[styles.subtypeBadge, { backgroundColor: colors.textMuted + "20" }]}>
+                    <Text style={[styles.subtypeBadgeText, { color: colors.textSecondary }]}>
+                      {selectedAction.subtype}
+                    </Text>
+                  </View>
+                )}
                 {(() => {
                   const statusDisplay = getStatusDisplay(selectedAction, colors, isDark);
                   return (
@@ -963,6 +970,16 @@ const styles = StyleSheet.create({
     fontSize: typography.xs,
     fontWeight: "600",
     letterSpacing: 0.5,
+  },
+  subtypeBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  subtypeBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+    textTransform: "capitalize",
   },
   statusBadge: {
     paddingHorizontal: spacing.sm,

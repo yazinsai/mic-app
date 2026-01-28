@@ -53,15 +53,22 @@ interface StatusColors {
 }
 
 function getStatusInfo(status: string, processingStatus: string | null | undefined, colors: StatusColors): { label: string; color: string } | null {
+  // Fully complete: transcribed + processed (or sent for legacy)
+  if (status === "transcribed" && processingStatus === "processed") return null;
   if (status === "sent" && !processingStatus) return null;
   if (status === "sent" && processingStatus === "processed") return null;
 
-  // Show processing status if available
+  // Show processing status if available (extraction worker is active)
   if (processingStatus === "processing") {
     return { label: "Extracting actions...", color: colors.primary };
   }
   if (processingStatus === "failed") {
     return { label: "Processing failed", color: colors.error };
+  }
+
+  // Transcribed but not yet processed by extraction worker
+  if (status === "transcribed" && !processingStatus) {
+    return { label: "Queued for extraction", color: colors.textTertiary };
   }
 
   const statusMap: Record<string, { label: string; color: string }> = {
@@ -71,7 +78,6 @@ function getStatusInfo(status: string, processingStatus: string | null | undefin
     uploaded: { label: "Processing", color: colors.primary },
     transcribing: { label: "Transcribing", color: colors.primary },
     transcription_failed: { label: "Failed", color: colors.error },
-    transcribed: { label: "Sending", color: colors.primary },
     sending: { label: "Sending", color: colors.primary },
     send_failed: { label: "Send failed", color: colors.error },
   };
@@ -96,7 +102,8 @@ function RecordingItem({
   const colors = useColors();
   const isFailed = recording.status.includes("failed");
   const statusInfo = getStatusInfo(recording.status, recording.processingStatus, colors);
-  const isRetryable = recording.status !== "sent";
+  const isFullyComplete = (recording.status === "transcribed" && recording.processingStatus === "processed") || recording.status === "sent";
+  const isRetryable = !isFullyComplete;
   const actions = recording.actions ?? [];
   const hasActions = actions.length > 0;
 

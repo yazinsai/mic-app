@@ -83,6 +83,13 @@ export function ActionItem({ action }: ActionItemProps) {
               {typeConfig.label}
             </Text>
           </View>
+          {action.type === "CodeChange" && action.subtype && (
+            <View style={[styles.subtypeBadge, { backgroundColor: colors.textMuted + "20" }]}>
+              <Text style={[styles.subtypeBadgeText, { color: colors.textSecondary }]}>
+                {action.subtype}
+              </Text>
+            </View>
+          )}
           <View style={[styles.statusBadge, { backgroundColor: statusDisplay.bg }]}>
             <Text style={[styles.statusBadgeText, { color: statusDisplay.color }]}>
               {statusDisplay.label}
@@ -132,6 +139,16 @@ const styles = StyleSheet.create({
     fontSize: typography.xs,
     fontWeight: typography.semibold,
     letterSpacing: 0.5,
+  },
+  subtypeBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  subtypeBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+    textTransform: "capitalize",
   },
   statusBadge: {
     paddingHorizontal: spacing.sm,
