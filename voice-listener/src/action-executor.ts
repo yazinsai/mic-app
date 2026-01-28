@@ -16,6 +16,7 @@ interface Action {
   projectPath?: string;
   messages?: string;
   cancelRequested?: boolean;
+  sessionId?: string; // Claude session ID for resuming conversations
   // UserTask fields
   task?: string;
   why_user?: string;
@@ -25,6 +26,28 @@ interface Action {
 
 const POLL_INTERVAL = 5000; // 5 seconds
 const MAX_CONCURRENCY = 15; // Maximum parallel action executions
+
+interface ThreadMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+}
+
+function parseMessages(json: string | undefined): ThreadMessage[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as ThreadMessage[];
+  } catch {
+    return [];
+  }
+}
+
+function hasNewUserFeedback(action: Action): boolean {
+  const messages = parseMessages(action.messages);
+  if (messages.length === 0) return false;
+  const lastMessage = messages[messages.length - 1];
+  return lastMessage.role === "user";
+}
 
 // CLI flag to skip immediate recovery (for testing)
 const SKIP_RECOVERY = process.argv.includes("--skip-recovery");
@@ -352,6 +375,7 @@ async function executeAction(action: Action): Promise<string | null> {
   console.log("=".repeat(60));
 
   // Setup debug log file
+  const willResume = action.sessionId && hasNewUserFeedback(action);
   let logFile: string | null = null;
   if (DEBUG_LOG) {
     await mkdir(LOGS_DIR, { recursive: true });
@@ -363,6 +387,7 @@ Type: ${action.type}
 Title: ${action.title}
 Description: ${action.description || "(none)"}
 Started: ${new Date().toISOString()}
+Mode: ${willResume ? `RESUME (session: ${action.sessionId})` : "NEW SESSION"}
 ${"=".repeat(60)}
 
 `;
@@ -406,14 +431,42 @@ ${"=".repeat(60)}
   try {
     const outputFormat = DEBUG_LOG ? "stream-json" : "text";
 
-    const cmd = [
-      "claude",
-      "-p",
-      prompt,
-      "--dangerously-skip-permissions",
-      "--output-format",
-      outputFormat,
-    ];
+    // Check if we should resume a previous session (has sessionId + new user feedback)
+    const shouldResume = action.sessionId && hasNewUserFeedback(action);
+
+    let cmd: string[];
+    if (shouldResume) {
+      // Resume previous session with the new feedback
+      const messages = parseMessages(action.messages);
+      const latestFeedback = messages.filter(m => m.role === "user").pop();
+      const feedbackPrompt = `The user has provided feedback on your previous work:
+
+"${latestFeedback?.content}"
+
+Please address this feedback and continue iterating on the task.`;
+
+      cmd = [
+        "claude",
+        "--resume",
+        action.sessionId!,
+        "-p",
+        feedbackPrompt,
+        "--dangerously-skip-permissions",
+        "--output-format",
+        outputFormat,
+      ];
+      console.log(`Resuming session ${action.sessionId} with user feedback`);
+    } else {
+      // Fresh execution with full prompt
+      cmd = [
+        "claude",
+        "-p",
+        prompt,
+        "--dangerously-skip-permissions",
+        "--output-format",
+        outputFormat,
+      ];
+    }
 
     if (DEBUG_LOG) {
       cmd.push("--verbose");
@@ -421,6 +474,11 @@ ${"=".repeat(60)}
 
     console.log(`Spawning: ${cmd.join(" ").slice(0, 100)}...`);
     console.log(`Working directory: ${projectDir}`);
+    if (shouldResume) {
+      console.log(`Mode: RESUME (session: ${action.sessionId})`);
+    } else {
+      console.log(`Mode: NEW SESSION`);
+    }
 
     // Prepare env vars for the CLI script
     const cliScriptPath = join(import.meta.dir, "../scripts/update-action-cli.sh");
