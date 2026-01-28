@@ -4,37 +4,66 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActionItem, type Action } from "./ActionItem";
 import { spacing, typography, radii } from "@/constants/Colors";
 import { useThemeColors } from "@/hooks/useThemeColors";
+import { db } from "@/lib/db";
 
 interface ActionsScreenProps {
   actions: Action[];
   onActionPress?: (action: Action) => void;
 }
 
-type ViewMode = "timeline" | "type" | "status";
+type TabMode = "review" | "active" | "done";
 type ActionType = "bug" | "feature" | "todo" | "note" | "question" | "command" | "idea" | "post";
-type ActionStatus = "pending" | "in_progress" | "awaiting_feedback" | "completed" | "failed" | "cancelled";
 
-const TYPE_ORDER: ActionType[] = ["idea", "bug", "todo", "feature", "question", "command", "note", "post"];
-const TYPE_LABELS: Record<ActionType, string> = {
-  bug: "Bugs",
-  feature: "Features",
-  todo: "To-Do",
-  note: "Notes",
-  question: "Questions",
-  command: "Commands",
-  idea: "Ideas",
-  post: "Posts",
-};
+// Categorization helpers
+function needsReview(action: Action): boolean {
+  // Explicit awaiting_feedback status
+  if (action.status === "awaiting_feedback") return true;
 
-const STATUS_ORDER: ActionStatus[] = ["in_progress", "awaiting_feedback", "pending", "completed", "cancelled", "failed"];
-const STATUS_LABELS: Record<ActionStatus, string> = {
-  pending: "Pending",
-  in_progress: "Running",
-  awaiting_feedback: "Awaiting Reply",
-  completed: "Completed",
-  cancelled: "Stopped",
-  failed: "Failed",
-};
+  // Failed actions need explicit dismiss
+  if (action.status === "failed") return true;
+
+  // Completed with last message from assistant = implicit review
+  if (action.status === "completed" && action.messages) {
+    try {
+      const messages = JSON.parse(action.messages) as { role: string }[];
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.role === "assistant") return true;
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  return false;
+}
+
+function isActive(action: Action): boolean {
+  return action.status === "in_progress" || action.status === "pending";
+}
+
+function isDone(action: Action): boolean {
+  // Cancelled is always done
+  if (action.status === "cancelled") return true;
+
+  // Completed without pending review
+  if (action.status === "completed") {
+    if (!action.messages) return true;
+    try {
+      const messages = JSON.parse(action.messages) as { role: string }[];
+      const lastMessage = messages[messages.length - 1];
+      return lastMessage?.role !== "assistant";
+    } catch {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function categorizeAction(action: Action): TabMode {
+  if (needsReview(action)) return "review";
+  if (isActive(action)) return "active";
+  return "done";
+}
 
 type Section = {
   title: string;
@@ -44,80 +73,79 @@ type Section = {
   isRunning?: boolean;
 };
 
-function groupActionsByType(actions: Action[]): Section[] {
-  const grouped = new Map<ActionType, Action[]>();
+function groupActionsForTab(actions: Action[], tab: TabMode): Section[] {
+  // Filter actions by tab category
+  const filtered = actions.filter((action) => categorizeAction(action) === tab);
 
-  for (const action of actions) {
-    const type = action.type as ActionType;
-    const existing = grouped.get(type) || [];
-    grouped.set(type, [...existing, action]);
-  }
-
-  return TYPE_ORDER
-    .filter((type) => grouped.has(type))
-    .map((type) => ({
-      title: TYPE_LABELS[type],
-      type,
-      key: type,
-      data: grouped.get(type) || [],
-    }));
-}
-
-function groupActionsByStatus(actions: Action[]): Section[] {
-  const grouped = new Map<ActionStatus, Action[]>();
-
-  for (const action of actions) {
-    const status = action.status as ActionStatus;
-    const existing = grouped.get(status) || [];
-    grouped.set(status, [...existing, action]);
-  }
-
-  return STATUS_ORDER
-    .filter((status) => grouped.has(status))
-    .map((status) => ({
-      title: STATUS_LABELS[status],
-      key: `status-${status}`,
-      data: grouped.get(status) || [],
-      isRunning: status === "in_progress",
-    }));
-}
-
-function groupActionsForTimeline(actions: Action[]): Section[] {
-  const running: Action[] = [];
-  const rest: Action[] = [];
-
-  for (const action of actions) {
-    if (action.status === "in_progress" || action.status === "awaiting_feedback") {
-      running.push(action);
-    } else {
-      rest.push(action);
+  // Sort by appropriate timestamp
+  const sorted = [...filtered].sort((a, b) => {
+    if (tab === "active") {
+      // Active: sort by startedAt or extractedAt (most recent first)
+      return (b.startedAt ?? b.extractedAt) - (a.startedAt ?? a.extractedAt);
     }
+    if (tab === "review") {
+      // Review: sort by completedAt or extractedAt (most recent first)
+      return (b.completedAt ?? b.extractedAt) - (a.completedAt ?? a.extractedAt);
+    }
+    // Done: sort by completedAt or extractedAt (most recent first)
+    return (b.completedAt ?? b.extractedAt) - (a.completedAt ?? a.extractedAt);
+  });
+
+  if (sorted.length === 0) return [];
+
+  // For Active tab, split running and pending
+  if (tab === "active") {
+    const running = sorted.filter((a) => a.status === "in_progress");
+    const pending = sorted.filter((a) => a.status === "pending");
+
+    const sections: Section[] = [];
+    if (running.length > 0) {
+      sections.push({
+        title: "Running",
+        key: "running",
+        data: running,
+        isRunning: true,
+      });
+    }
+    if (pending.length > 0) {
+      sections.push({
+        title: "Queued",
+        key: "pending",
+        data: pending,
+      });
+    }
+    return sections;
   }
 
-  // Sort running by startedAt (most recent first), rest by extractedAt
-  running.sort((a, b) => (b.startedAt ?? b.extractedAt) - (a.startedAt ?? a.extractedAt));
-  rest.sort((a, b) => b.extractedAt - a.extractedAt);
+  // For Review tab, split failed and awaiting review
+  if (tab === "review") {
+    const failed = sorted.filter((a) => a.status === "failed");
+    const awaiting = sorted.filter((a) => a.status !== "failed");
 
-  const sections: Section[] = [];
-
-  if (running.length > 0) {
-    sections.push({
-      title: "Active",
-      key: "running",
-      data: running,
-      isRunning: true,
-    });
+    const sections: Section[] = [];
+    if (failed.length > 0) {
+      sections.push({
+        title: "Failed",
+        key: "failed",
+        data: failed,
+      });
+    }
+    if (awaiting.length > 0) {
+      sections.push({
+        title: "Awaiting Review",
+        key: "awaiting",
+        data: awaiting,
+      });
+    }
+    return sections;
   }
 
-  if (rest.length > 0) {
-    sections.push({
-      title: "All Actions",
-      key: "all",
-      data: rest,
-    });
-  }
-
-  return sections;
+  // For Done tab, single section
+  return [{
+    title: "Completed",
+    key: "done",
+    data: sorted,
+  }];
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -134,8 +162,10 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-function ActionCard({ action, onPress }: { action: Action; onPress?: () => void }) {
+function ActionCard({ action, onPress, onDismiss }: { action: Action; onPress?: () => void; onDismiss?: () => void }) {
   const { colors, isDark } = useThemeColors();
+  const isFailed = action.status === "failed";
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -154,67 +184,99 @@ function ActionCard({ action, onPress }: { action: Action; onPress?: () => void 
       }}
     >
       <ActionItem action={action} />
-      <Text style={[styles.cardTime, { color: colors.textMuted }]}>{formatRelativeTime(action.extractedAt)}</Text>
+      <View style={styles.cardFooter}>
+        <Text style={[styles.cardTime, { color: colors.textMuted }]}>{formatRelativeTime(action.extractedAt)}</Text>
+        {isFailed && onDismiss && (
+          <View style={styles.cardActions}>
+            <Pressable
+              style={[styles.dismissButton, { backgroundColor: colors.error + "15" }]}
+              onPress={(e) => {
+                e.stopPropagation();
+                onDismiss();
+              }}
+            >
+              <Text style={[styles.dismissButtonText, { color: colors.error }]}>Dismiss</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
     </Pressable>
   );
 }
 
-interface ViewToggleProps {
-  value: ViewMode;
-  onChange: (mode: ViewMode) => void;
+interface TabBarProps {
+  value: TabMode;
+  onChange: (mode: TabMode) => void;
+  counts: { review: number; active: number; done: number };
 }
 
-function ViewToggle({ value, onChange }: ViewToggleProps) {
+function TabBar({ value, onChange, counts }: TabBarProps) {
   const { colors, isDark } = useThemeColors();
+
+  const tabs: { key: TabMode; label: string; count: number; badgeColor: string }[] = [
+    { key: "review", label: "Review", count: counts.review, badgeColor: colors.warning },
+    { key: "active", label: "Active", count: counts.active, badgeColor: colors.primary },
+    { key: "done", label: "Done", count: counts.done, badgeColor: colors.textMuted },
+  ];
+
   return (
-    <View style={[styles.toggleContainer, { backgroundColor: colors.backgroundElevated }, !isDark && [styles.toggleLightBorder, { borderColor: colors.border }]]}>
-      <Pressable
-        style={[styles.toggleOption, value === "timeline" && { backgroundColor: colors.background }]}
-        onPress={() => onChange("timeline")}
-      >
-        <Ionicons
-          name="time-outline"
-          size={16}
-          color={value === "timeline" ? colors.primary : colors.textTertiary}
-        />
-        <Text style={[styles.toggleText, { color: colors.textTertiary }, value === "timeline" && { color: colors.primary }]}>
-          Timeline
-        </Text>
-      </Pressable>
-      <Pressable
-        style={[styles.toggleOption, value === "type" && { backgroundColor: colors.background }]}
-        onPress={() => onChange("type")}
-      >
-        <Ionicons
-          name="layers-outline"
-          size={16}
-          color={value === "type" ? colors.primary : colors.textTertiary}
-        />
-        <Text style={[styles.toggleText, { color: colors.textTertiary }, value === "type" && { color: colors.primary }]}>
-          By Type
-        </Text>
-      </Pressable>
-      <Pressable
-        style={[styles.toggleOption, value === "status" && { backgroundColor: colors.background }]}
-        onPress={() => onChange("status")}
-      >
-        <Ionicons
-          name="pulse-outline"
-          size={16}
-          color={value === "status" ? colors.primary : colors.textTertiary}
-        />
-        <Text style={[styles.toggleText, { color: colors.textTertiary }, value === "status" && { color: colors.primary }]}>
-          By Status
-        </Text>
-      </Pressable>
+    <View style={styles.tabBarContainer}>
+      <View style={[styles.tabBar, { backgroundColor: colors.backgroundElevated }, !isDark && [styles.tabBarLightBorder, { borderColor: colors.border }]]}>
+        {tabs.map((tab) => {
+          const isSelected = value === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              style={[styles.tab, isSelected && styles.tabSelected]}
+              onPress={() => onChange(tab.key)}
+            >
+              <View style={styles.tabContent}>
+                <Text style={[
+                  styles.tabLabel,
+                  { color: isSelected ? colors.textPrimary : colors.textTertiary },
+                  isSelected && { fontWeight: "600" },
+                ]}>
+                  {tab.label}
+                </Text>
+                {tab.count > 0 && tab.key !== "done" && (
+                  <View style={[styles.badge, { backgroundColor: tab.badgeColor + "25" }]}>
+                    <Text style={[styles.badgeText, { color: tab.badgeColor }]}>
+                      {tab.count > 99 ? "99+" : tab.count}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {isSelected && (
+                <View style={[styles.tabIndicator, { backgroundColor: colors.primary }]} />
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
   const { colors, isDark } = useThemeColors();
-  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
+  const [tabMode, setTabMode] = useState<TabMode>("review");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Calculate counts for each tab (before search filtering)
+  const tabCounts = useMemo(() => {
+    return {
+      review: actions.filter((a) => categorizeAction(a) === "review").length,
+      active: actions.filter((a) => categorizeAction(a) === "active").length,
+      done: actions.filter((a) => categorizeAction(a) === "done").length,
+    };
+  }, [actions]);
+
+  // Auto-switch to active tab if review is empty but active has items
+  useMemo(() => {
+    if (tabCounts.review === 0 && tabCounts.active > 0 && tabMode === "review") {
+      setTabMode("active");
+    }
+  }, [tabCounts, tabMode]);
 
   // Filter actions by search query
   const filteredActions = useMemo(() => {
@@ -231,15 +293,17 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
   }, [actions, searchQuery]);
 
   const sections = useMemo(() => {
-    switch (viewMode) {
-      case "timeline":
-        return groupActionsForTimeline(filteredActions);
-      case "type":
-        return groupActionsByType(filteredActions);
-      case "status":
-        return groupActionsByStatus(filteredActions);
-    }
-  }, [viewMode, filteredActions]);
+    return groupActionsForTab(filteredActions, tabMode);
+  }, [tabMode, filteredActions]);
+
+  // Handle dismiss for failed actions
+  const handleDismiss = async (actionId: string) => {
+    await db.transact(
+      db.tx.actions[actionId].update({
+        status: "cancelled",
+      })
+    );
+  };
 
   if (actions.length === 0) {
     return (
@@ -279,19 +343,43 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
         </View>
       </View>
 
-      {/* View Toggle */}
-      <ViewToggle value={viewMode} onChange={setViewMode} />
+      {/* Tab Bar */}
+      <TabBar value={tabMode} onChange={setTabMode} counts={tabCounts} />
 
-      {filteredActions.length === 0 ? (
+      {searchQuery.trim() && filteredActions.length === 0 ? (
         <View style={styles.noResults}>
-          <Text style={[styles.noResultsText, { color: colors.textTertiary }]}>No actions match "{searchQuery}"</Text>
+          <Text style={[styles.noResultsText, { color: colors.textTertiary }]}>No actions match &ldquo;{searchQuery}&rdquo;</Text>
+        </View>
+      ) : sections.length === 0 ? (
+        <View style={styles.emptyTab}>
+          <View style={[styles.emptyTabIcon, { backgroundColor: colors.backgroundElevated }]}>
+            <Ionicons
+              name={tabMode === "review" ? "checkmark-done-outline" : tabMode === "active" ? "hourglass-outline" : "archive-outline"}
+              size={40}
+              color={colors.textTertiary}
+            />
+          </View>
+          <Text style={[styles.emptyTabTitle, { color: colors.textSecondary }]}>
+            {tabMode === "review" ? "Nothing to review" : tabMode === "active" ? "No active actions" : "No completed actions"}
+          </Text>
+          <Text style={[styles.emptyTabSubtitle, { color: colors.textTertiary }]}>
+            {tabMode === "review"
+              ? "Completed actions will appear here for review"
+              : tabMode === "active"
+              ? "Actions will appear here when running"
+              : "Completed actions will appear here"}
+          </Text>
         </View>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <ActionCard action={item} onPress={() => onActionPress?.(item)} />
+            <ActionCard
+              action={item}
+              onPress={() => onActionPress?.(item)}
+              onDismiss={item.status === "failed" ? () => handleDismiss(item.id) : undefined}
+            />
           )}
           renderSectionHeader={({ section }) => (
             <View style={[styles.sectionHeader, { backgroundColor: colors.background }, section.isRunning && styles.sectionHeaderRunning]}>
@@ -355,30 +443,53 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: spacing.xs,
   },
-  toggleContainer: {
-    flexDirection: "row",
-    marginHorizontal: spacing.lg,
+  // Tab Bar
+  tabBarContainer: {
+    paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
+  },
+  tabBar: {
+    flexDirection: "row",
     borderRadius: radii.lg,
-    padding: 4,
+    overflow: "hidden",
   },
-  toggleLightBorder: {
+  tabBarLightBorder: {
     borderWidth: 1,
-    // borderColor set dynamically via colors.border
   },
-  toggleOption: {
+  tab: {
     flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing.md,
+    position: "relative",
+  },
+  tabSelected: {},
+  tabContent: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
   },
-  toggleText: {
+  tabLabel: {
     fontSize: typography.sm,
     fontWeight: "500",
+  },
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    minWidth: 20,
+    alignItems: "center",
+  },
+  badgeText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+  },
+  tabIndicator: {
+    position: "absolute",
+    bottom: 0,
+    left: spacing.lg,
+    right: spacing.lg,
+    height: 2,
+    borderRadius: 1,
   },
   list: {
     paddingBottom: 160,
@@ -442,11 +553,29 @@ const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.8,
   },
-  cardTime: {
-    fontSize: typography.xs,
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     marginTop: -spacing.xs,
+  },
+  cardTime: {
+    fontSize: typography.xs,
+  },
+  cardActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  dismissButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
+  },
+  dismissButtonText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
   },
   empty: {
     flex: 1,
@@ -481,6 +610,31 @@ const styles = StyleSheet.create({
   },
   noResultsText: {
     fontSize: typography.base,
+    textAlign: "center",
+  },
+  // Empty tab state
+  emptyTab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xxl,
+    paddingBottom: 120,
+  },
+  emptyTabIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  emptyTabTitle: {
+    fontSize: typography.base,
+    fontWeight: "500",
+    marginBottom: spacing.xs,
+  },
+  emptyTabSubtitle: {
+    fontSize: typography.sm,
     textAlign: "center",
   },
 });
