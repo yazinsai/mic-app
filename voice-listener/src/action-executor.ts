@@ -860,6 +860,15 @@ ${action.type === "idea" ? `   - idea: Research, plan, and create a NEW project 
 
 6. When done, set status to "completed"
 
+CRITICAL SAFEGUARDS - DO NOT VIOLATE:
+- DO NOT push InstantDB schema changes (no \`npx instant-cli push schema\`)
+- DO NOT push InstantDB permission changes (no \`npx instant-cli push perms\`)
+- DO NOT use or reference INSTANT_APP_ID or INSTANT_ADMIN_TOKEN environment variables from the parent mic-app
+- DO NOT reuse existing InstantDB app IDs - always create new apps with \`npx instant-cli init-without-files\`
+- DO NOT read .env files from the parent mic-app directory or voice-listener directory
+- For "idea" projects: Create standalone projects without shared database dependencies
+- If you need a database for a new project, create a fresh InstantDB app with its own credentials
+
 Now execute this action.`;
 
   return prompt;

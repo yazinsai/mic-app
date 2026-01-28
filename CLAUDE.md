@@ -31,6 +31,12 @@ npx instant-cli push schema --app $INSTANT_APP_ID --token $INSTANT_ADMIN_TOKEN -
 npx instant-cli push perms --app $INSTANT_APP_ID --token $INSTANT_ADMIN_TOKEN --yes
 ```
 
+⚠️ **CRITICAL**: The instant-cli commands above are for the MAIN mic-app only. Do NOT run these from workspace projects or with different schemas - this will destroy production data.
+
+For new projects in `workspace/projects/`:
+- Create a NEW InstantDB app: `npx instant-cli init-without-files --title "project-name"`
+- Never reuse the mic-app's INSTANT_APP_ID (`7e356cba-464a-4cee-a177-0e731e0853b9`)
+
 ### Voice Listener Workers (Mac)
 
 ```bash
