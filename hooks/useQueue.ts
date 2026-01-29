@@ -20,7 +20,9 @@ export function useQueue() {
     recordings: {
       $: { order: { createdAt: "desc" } },
       audioFile: {},
-      actions: {},
+      actions: {
+        dependsOn: {}, // Include dependency relationship
+      },
     },
   });
 

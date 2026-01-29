@@ -24,6 +24,7 @@ import { ActionsScreen } from "@/components/ActionsScreen";
 import { BottomNavBar } from "@/components/BottomNavBar";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { VersionBadge } from "@/components/VersionBadge";
+import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
 import { RatingSection } from "@/components/RatingSection";
 import { SettingsModal } from "@/components/SettingsModal";
 import { VocabularyScreen } from "@/components/VocabularyScreen";
@@ -432,6 +433,7 @@ export default function HomeScreen() {
           {(pendingCount > 0 || failedCount > 0) && (
             <QueueStatus pendingCount={pendingCount} failedCount={failedCount} />
           )}
+          <WorkerStatusBadge />
           <VersionBadge />
           <Pressable
             onPress={() => setShowSettings(true)}
@@ -535,6 +537,28 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 )}
+                {selectedAction.type === "CodeChange" && (
+                  <View style={[
+                    styles.deployModeBadge,
+                    {
+                      backgroundColor: selectedAction.prOnly
+                        ? colors.warning + "20"
+                        : colors.success + "20",
+                    },
+                  ]}>
+                    <Ionicons
+                      name={selectedAction.prOnly ? "git-pull-request-outline" : "rocket-outline"}
+                      size={12}
+                      color={selectedAction.prOnly ? colors.warning : colors.success}
+                    />
+                    <Text style={[
+                      styles.deployModeBadgeText,
+                      { color: selectedAction.prOnly ? colors.warning : colors.success },
+                    ]}>
+                      {selectedAction.prOnly ? "PR Only" : "Deploy"}
+                    </Text>
+                  </View>
+                )}
                 {(() => {
                   const statusDisplay = getStatusDisplay(selectedAction, colors, isDark);
                   return (
@@ -575,6 +599,34 @@ export default function HomeScreen() {
               <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{selectedAction.title}</Text>
               {selectedAction.description && (
                 <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>{selectedAction.description}</Text>
+              )}
+
+              {/* Dependency Info */}
+              {selectedAction.dependsOn && selectedAction.dependsOn.length > 0 && (
+                <View style={[styles.dependencySection, { backgroundColor: colors.warning + "15", borderColor: colors.warning + "30" }]}>
+                  <View style={styles.dependencyHeader}>
+                    <Ionicons name="git-branch-outline" size={16} color={colors.warning} />
+                    <Text style={[styles.dependencySectionLabel, { color: colors.warning }]}>
+                      {selectedAction.status === "pending" ? "Waiting for:" : "Depends on:"}
+                    </Text>
+                  </View>
+                  <View style={[styles.dependencyItem, { backgroundColor: colors.background }]}>
+                    <Text style={[styles.dependencyTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {selectedAction.dependsOn[0].title}
+                    </Text>
+                    <View style={[
+                      styles.dependencyStatus,
+                      { backgroundColor: selectedAction.dependsOn[0].status === "completed" ? colors.success + "20" : colors.warning + "20" }
+                    ]}>
+                      <Text style={[
+                        styles.dependencyStatusText,
+                        { color: selectedAction.dependsOn[0].status === "completed" ? colors.success : colors.warning }
+                      ]}>
+                        {selectedAction.dependsOn[0].status === "completed" ? "Done" : selectedAction.dependsOn[0].status === "in_progress" ? "Running" : "Queued"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
               )}
 
               {/* Timestamps */}
@@ -981,6 +1033,18 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     textTransform: "capitalize",
   },
+  deployModeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  deployModeBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
   statusBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
@@ -1006,6 +1070,43 @@ const styles = StyleSheet.create({
     fontSize: typography.base,
     lineHeight: typography.base * 1.5,
     marginBottom: spacing.md,
+  },
+  dependencySection: {
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+  },
+  dependencyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  dependencySectionLabel: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  dependencyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    gap: spacing.sm,
+  },
+  dependencyTitle: {
+    fontSize: typography.sm,
+    flex: 1,
+  },
+  dependencyStatus: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+  },
+  dependencyStatusText: {
+    fontSize: typography.xs,
+    fontWeight: "500",
   },
   timestampSection: {
     flexDirection: "row",

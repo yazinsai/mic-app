@@ -1,10 +1,17 @@
 import { View, Text, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import type { InstaQLEntity } from "@instantdb/react-native";
 import type { AppSchema } from "@/instant.schema";
 import { spacing, typography, radii, actionTypeColorsDark, actionTypeColorsLight, type ActionType } from "@/constants/Colors";
 import { useThemeColors } from "@/hooks/useThemeColors";
 
-export type Action = InstaQLEntity<AppSchema, "actions">;
+// Base action type from schema
+type BaseAction = InstaQLEntity<AppSchema, "actions">;
+
+// Extended action type with dependency relationship
+export type Action = BaseAction & {
+  dependsOn?: { id: string; title: string; status: string }[];
+};
 
 type ActionStatus = "pending" | "in_progress" | "awaiting_feedback" | "completed" | "failed" | "cancelled";
 
@@ -110,6 +117,15 @@ export function ActionItem({ action }: ActionItemProps) {
           {action.errorMessage}
         </Text>
       )}
+      {/* Show dependency info if waiting */}
+      {action.dependsOn && action.dependsOn.length > 0 && action.status === "pending" && (
+        <View style={[styles.dependencyInfo, { backgroundColor: colors.warning + "15" }]}>
+          <Ionicons name="time-outline" size={12} color={colors.warning} />
+          <Text style={[styles.dependencyText, { color: colors.warning }]} numberOfLines={1}>
+            Waiting for: {action.dependsOn[0].title}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -173,5 +189,18 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     marginTop: spacing.xs,
     lineHeight: typography.sm * 1.4,
+  },
+  dependencyInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.sm,
+  },
+  dependencyText: {
+    fontSize: typography.xs,
+    flex: 1,
   },
 });

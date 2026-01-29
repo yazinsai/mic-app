@@ -6,6 +6,12 @@ import { initPromptVersioning, getCurrentVersionId } from "./prompt-versioning";
 import { classifyError } from "./error-categories";
 import { loadPrompt } from "./prompt-loader";
 
+interface DependsOnAction {
+  id: string;
+  status: string;
+  title: string;
+}
+
 interface Action {
   id: string;
   type: string;
@@ -17,6 +23,8 @@ interface Action {
   messages?: string;
   cancelRequested?: boolean;
   sessionId?: string; // Claude session ID for resuming conversations
+  sequenceIndex?: number; // Position in sequence (1-based)
+  dependsOn?: DependsOnAction[]; // Action this depends on (from link)
   // UserTask fields
   task?: string;
   why_user?: string;
@@ -49,6 +57,23 @@ function hasNewUserFeedback(action: Action): boolean {
   if (messages.length === 0) return false;
   const lastMessage = messages[messages.length - 1];
   return lastMessage.role === "user";
+}
+
+function isDependencyComplete(action: Action): boolean {
+  // No dependency means it's ready to run
+  if (!action.dependsOn || action.dependsOn.length === 0) {
+    return true;
+  }
+
+  const dependency = action.dependsOn[0]; // We only support one dependency (has: "one")
+  return dependency.status === "completed";
+}
+
+function getDependencyStatus(action: Action): string | null {
+  if (!action.dependsOn || action.dependsOn.length === 0) {
+    return null;
+  }
+  return action.dependsOn[0].status;
 }
 
 async function sendHeartbeat(status?: string): Promise<void> {
@@ -745,6 +770,7 @@ async function pollForActions(): Promise<number> {
         $: {
           where: whereClause,
         },
+        dependsOn: {}, // Include the dependency relationship
       },
     });
 
@@ -754,23 +780,55 @@ async function pollForActions(): Promise<number> {
       return 0;
     }
 
-    console.log(`Found ${actions.length} pending action(s)`);
+    // Filter out actions waiting on incomplete dependencies
+    const readyActions: Action[] = [];
+    const waitingActions: Action[] = [];
 
-    if (LIMIT < actions.length) {
+    for (const action of actions) {
+      if (isDependencyComplete(action)) {
+        readyActions.push(action);
+      } else {
+        waitingActions.push(action);
+      }
+    }
+
+    if (waitingActions.length > 0) {
+      console.log(`${waitingActions.length} action(s) waiting on dependencies:`);
+      for (const action of waitingActions) {
+        const depStatus = getDependencyStatus(action);
+        const depTitle = action.dependsOn?.[0]?.title ?? "unknown";
+        console.log(`  - "${action.title}" waiting on "${depTitle}" (${depStatus})`);
+      }
+    }
+
+    if (readyActions.length === 0) {
+      return 0;
+    }
+
+    console.log(`Found ${readyActions.length} pending action(s) ready to execute`);
+
+    // Sort by sequenceIndex (if present) to execute in order
+    readyActions.sort((a, b) => {
+      const aIdx = a.sequenceIndex ?? Infinity;
+      const bIdx = b.sequenceIndex ?? Infinity;
+      return aIdx - bIdx;
+    });
+
+    if (LIMIT < readyActions.length) {
       console.log(`Limiting to ${LIMIT} action(s)`);
-      actions = actions.slice(0, LIMIT);
+      readyActions.splice(LIMIT);
     }
 
     // Execute actions in parallel batches
     let processed = 0;
-    while (processed < actions.length) {
-      const batch = actions.slice(processed, processed + MAX_CONCURRENCY);
+    while (processed < readyActions.length) {
+      const batch = readyActions.slice(processed, processed + MAX_CONCURRENCY);
       console.log(`\nExecuting batch of ${batch.length} action(s) in parallel...`);
       await Promise.all(batch.map((action) => executeAction(action)));
       processed += batch.length;
     }
 
-    return actions.length;
+    return readyActions.length;
   } catch (error) {
     console.error("Polling error:", error);
     return 0;
