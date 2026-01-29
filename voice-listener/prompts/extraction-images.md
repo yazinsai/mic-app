@@ -35,6 +35,13 @@ ROUTING RULES:
   - If no existing project is clearly identified, ask which project via description
 - "Project" creates NEW projects - only use when nothing existing fits
 
+SEQUENCING:
+When actions have logical dependencies (e.g., "research X then build Y"), use sequenceIndex to define order:
+- Actions with lower sequenceIndex run first
+- Actions with the same sequenceIndex can run in parallel
+- Omit sequenceIndex for independent actions that can run anytime
+- Use dependsOnIndex to reference which earlier action this one depends on (by sequenceIndex)
+
 Output ONLY a JSON block with the extracted actions. If no actions are found, output an empty array.
 
 Format:
@@ -47,13 +54,17 @@ Format:
       "title": "Brief title (under 80 chars)",
       "description": "Comprehensive description including what the screenshot shows, visible UI elements/errors, and what needs to be done.",
       "status": "pending",
-      "projectPath": "REQUIRED for CodeChange: existing workspace/projects/<folder> name"
+      "projectPath": "REQUIRED for CodeChange: existing workspace/projects/<folder> name",
+      "sequenceIndex": 1,
+      "dependsOnIndex": null
     },
     {
       "type": "Project",
       "title": "Brief title (under 80 chars)",
       "description": "Full context about the idea, requirements, and goals.",
-      "status": "pending"
+      "status": "pending",
+      "sequenceIndex": 2,
+      "dependsOnIndex": 1
     },
     {
       "type": "Research",

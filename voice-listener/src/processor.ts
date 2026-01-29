@@ -17,6 +17,9 @@ export interface ExtractedAction {
   why_user?: string;
   prep_allowed?: string;
   remind_at?: string;
+  // Sequencing fields
+  sequenceIndex?: number; // Position in sequence (1-based)
+  dependsOnIndex?: number; // Which sequenceIndex this depends on
 }
 
 interface ProcessResult {
