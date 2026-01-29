@@ -18,11 +18,10 @@ INSTRUCTIONS:
 
    ```bash
    "$ACTION_CLI" result "Brief summary of what was done"
-   "$ACTION_CLI" status completed
    "$ACTION_CLI" deployUrl "https://your-app.whhite.com"  # if deployed
    ```
 
-5. Always set status to "completed" when done (or "failed" if it couldn't be completed)
+5. Status is set automatically when you finish. Use `"$ACTION_CLI" status failed` only if the task cannot be completed.
 {{SAFEGUARDS}}
 {{RESULT_FORMATTING}}
 Now execute this action.

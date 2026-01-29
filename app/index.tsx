@@ -283,10 +283,23 @@ export default function HomeScreen() {
     };
     const updatedMessages = [...existingMessages, newMessage];
 
+    // Build update object - always include messages
+    const updateFields: Record<string, unknown> = {
+      messages: JSON.stringify(updatedMessages),
+    };
+
+    // If the action is completed, failed, or cancelled, requeue it for re-processing
+    // This allows the executor to pick it up and resume the session with the new feedback
+    if (selectedAction.status === "completed" || selectedAction.status === "failed" || selectedAction.status === "cancelled") {
+      updateFields.status = "pending";
+      updateFields.startedAt = null;
+      updateFields.completedAt = null;
+      updateFields.errorMessage = null;
+      updateFields.cancelRequested = null; // Clear any previous cancel request
+    }
+
     await db.transact(
-      db.tx.actions[selectedAction.id].update({
-        messages: JSON.stringify(updatedMessages),
-      })
+      db.tx.actions[selectedAction.id].update(updateFields)
     );
     setFeedbackText("");
   };
