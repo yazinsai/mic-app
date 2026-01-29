@@ -595,11 +595,11 @@ Please address this feedback and continue iterating on the task.`;
       return logFile;
     }
 
-    // Success - mark as completed
-    console.log(`\nAction ${action.id} completed successfully`);
+    // Success - mark as awaiting feedback (requires user review before moving to "done")
+    console.log(`\nAction ${action.id} completed successfully, awaiting review`);
     await db.transact(
       db.tx.actions[action.id].update({
-        status: "completed",
+        status: "awaiting_feedback",
         completedAt: Date.now(),
         durationMs,
         toolsUsed: totalToolsUsed,
