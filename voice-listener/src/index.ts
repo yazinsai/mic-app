@@ -131,8 +131,20 @@ async function saveActions(recordingId: string, actions: ExtractedAction[]): Pro
   if (actions.length === 0) return;
 
   const now = Date.now();
+
+  // First pass: generate IDs and build a map of sequenceIndex -> actionId
+  const actionIds: string[] = actions.map(() => id());
+  const sequenceIndexToId: Map<number, string> = new Map();
+
+  actions.forEach((action, index) => {
+    if (action.sequenceIndex !== undefined && action.sequenceIndex !== null) {
+      sequenceIndexToId.set(action.sequenceIndex, actionIds[index]);
+    }
+  });
+
+  // Second pass: build transactions with dependency links
   const txs = actions.map((action, index) => {
-    const actionId = id();
+    const actionId = actionIds[index];
     const syncToken = `${recordingId}:${index}`;
 
     // Build the update object with all fields
@@ -159,9 +171,26 @@ async function saveActions(recordingId: string, actions: ExtractedAction[]): Pro
       if (action.remind_at) updateData.remind_at = action.remind_at;
     }
 
-    return db.tx.actions[actionId]
+    // Add sequencing fields
+    if (action.sequenceIndex !== undefined && action.sequenceIndex !== null) {
+      updateData.sequenceIndex = action.sequenceIndex;
+    }
+
+    // Start building the transaction
+    let tx = db.tx.actions[actionId]
       .update(updateData)
       .link({ recording: recordingId });
+
+    // Link dependency if specified
+    if (action.dependsOnIndex !== undefined && action.dependsOnIndex !== null) {
+      const dependsOnActionId = sequenceIndexToId.get(action.dependsOnIndex);
+      if (dependsOnActionId) {
+        tx = tx.link({ dependsOn: dependsOnActionId });
+        console.log(`  → Action "${action.title}" depends on sequenceIndex ${action.dependsOnIndex}`);
+      }
+    }
+
+    return tx;
   });
 
   await db.transact(txs);

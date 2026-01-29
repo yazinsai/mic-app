@@ -96,6 +96,12 @@ const _schema = i.schema({
 
       // Claude session ID for resuming conversations with --resume flag
       sessionId: i.string().optional(),
+
+      // Sequencing: position in sequence (1-based, null means no sequence)
+      sequenceIndex: i.number().indexed().optional(),
+
+      // Deployment mode: true = PR only, false/null = deploy
+      prOnly: i.boolean().optional(),
     }),
     promptVersions: i.entity({
       version: i.string().unique().indexed(), // Hash-based version ID (first 12 chars of SHA256)
@@ -111,6 +117,11 @@ const _schema = i.schema({
     vocabularyTerms: i.entity({
       term: i.string().indexed(), // The correct spelling
       createdAt: i.number().indexed(),
+    }),
+    workerHeartbeats: i.entity({
+      name: i.string().unique().indexed(), // "extraction" | "execution"
+      lastSeen: i.number().indexed(),
+      status: i.string().optional(), // Optional status message
     }),
   },
   rooms: {},
@@ -163,6 +174,18 @@ const _schema = i.schema({
         on: "$files",
         has: "one",
         label: "imageRecording",
+      },
+    },
+    actionDependsOn: {
+      forward: {
+        on: "actions",
+        has: "one",
+        label: "dependsOn",
+      },
+      reverse: {
+        on: "actions",
+        has: "many",
+        label: "blockedActions",
       },
     },
   },
