@@ -92,6 +92,79 @@ bun run execute    # Execution worker
 - System theme detection (light/dark follows device)
 - Design tokens in `/constants/Colors.ts`
 
+## Using Ionicons in React Native
+
+Ionicons are included via `@expo/vector-icons`. Common pitfalls cause icons to render on separate lines or misalign with text.
+
+### Importing
+
+```tsx
+import { Ionicons } from "@expo/vector-icons";
+```
+
+### Inline Icon + Text (Correct Pattern)
+
+Icons and text must share a flex row container with proper alignment:
+
+```tsx
+// ✅ CORRECT: Icon and text inline
+<View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+  <Ionicons name="checkmark-circle" size={20} color="#22c55e" />
+  <Text>Task completed</Text>
+</View>
+
+// ✅ With NativeWind
+<View className="flex-row items-center gap-2">
+  <Ionicons name="checkmark-circle" size={20} color="#22c55e" />
+  <Text>Task completed</Text>
+</View>
+```
+
+### Common Pitfalls
+
+```tsx
+// ❌ WRONG: Icon renders on separate line (default flex column)
+<View>
+  <Ionicons name="alert-circle" size={20} color="red" />
+  <Text>Error message</Text>
+</View>
+
+// ❌ WRONG: Wrapping icon in Text causes layout issues
+<Text>
+  <Ionicons name="star" size={16} /> Favorite
+</Text>
+
+// ❌ WRONG: Missing alignItems causes vertical misalignment
+<View style={{ flexDirection: "row" }}>
+  <Ionicons name="time" size={24} color="#666" />
+  <Text style={{ fontSize: 14 }}>Different text size</Text>
+</View>
+```
+
+### Icon Buttons
+
+For tappable icons, wrap in `TouchableOpacity` or `Pressable`:
+
+```tsx
+<TouchableOpacity
+  onPress={handlePress}
+  style={{ padding: 8 }}
+  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+>
+  <Ionicons name="close" size={24} color="#666" />
+</TouchableOpacity>
+```
+
+### Icon Reference
+
+Browse all available icons at: https://icons.expo.fyi/Index (filter by Ionicons)
+
+Common icon names:
+- Navigation: `chevron-back`, `chevron-forward`, `close`, `menu`
+- Actions: `add`, `remove`, `create`, `trash`, `share`
+- Status: `checkmark-circle`, `alert-circle`, `information-circle`
+- Media: `play`, `pause`, `mic`, `volume-high`
+
 ## Key Patterns
 
 - Always pass `schema` to InstantDB `init()` for type safety

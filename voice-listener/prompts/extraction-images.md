@@ -30,10 +30,14 @@ For each action, determine its type:
 
 ROUTING RULES:
 - Prefer "CodeChange" when an existing project plausibly fits the request
-- For "CodeChange", you MUST set "projectPath" to an EXISTING directory under workspace/projects/
-  - Use a RELATIVE folder name like "my-project", NOT an absolute path
-  - If no existing project is clearly identified, ask which project via description
+- For "CodeChange", you MUST set "projectPath" to an EXISTING directory from the list below
+  - Use the EXACT folder name as shown (e.g., "app.coldcannon.com" NOT "cold-cannon")
+  - Domain-style names like "app.example.com" are valid folder names - use them as-is
+  - If no existing project clearly matches, ask which project via description
 - "Project" creates NEW projects - only use when nothing existing fits
+
+AVAILABLE PROJECTS (use exact folder names):
+{{PROJECT_LIST}}
 
 SEQUENCING:
 When actions have logical dependencies (e.g., "research X then build Y"), use sequenceIndex to define order:

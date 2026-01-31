@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { DeleteConfirmationOverlay } from "./DeleteConfirmationOverlay";
 import { ActionsList } from "./ActionsList";
 import type { Recording } from "@/lib/queue";
+import type { Action } from "./ActionItem";
 import { spacing, typography, radii } from "@/constants/Colors";
 import { useColors } from "@/hooks/useThemeColors";
 
@@ -12,6 +13,7 @@ interface RecordingsListProps {
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
   onShare: (recording: Recording) => void;
+  onActionPress?: (action: Action) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -91,6 +93,7 @@ function RecordingItem({
   onShare,
   isExpanded,
   onToggleExpand,
+  onActionPress,
 }: {
   recording: Recording;
   onRetry: (id: string) => void;
@@ -98,12 +101,11 @@ function RecordingItem({
   onShare: (recording: Recording) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  onActionPress?: (action: Action) => void;
 }) {
   const colors = useColors();
   const isFailed = recording.status.includes("failed");
   const statusInfo = getStatusInfo(recording.status, recording.processingStatus, colors);
-  const isFullyComplete = (recording.status === "transcribed" && recording.processingStatus === "processed") || recording.status === "sent";
-  const isRetryable = !isFullyComplete;
   const actions = recording.actions ?? [];
   const hasActions = actions.length > 0;
 
@@ -114,14 +116,10 @@ function RecordingItem({
         ? `"${recording.transcription.slice(0, 100)}${recording.transcription.length > 100 ? "..." : ""}"`
         : undefined,
       [
-        ...(isRetryable
-          ? [
-              {
-                text: isFailed ? "Retry" : "Reprocess",
-                onPress: () => onRetry(recording.id),
-              },
-            ]
-          : []),
+        {
+          text: isFailed ? "Retry" : "Reprocess",
+          onPress: () => onRetry(recording.id),
+        },
         { text: "Export", onPress: () => onShare(recording) },
         {
           text: "Delete",
@@ -188,7 +186,7 @@ function RecordingItem({
       {/* Actions - only show when expanded */}
       {isExpanded && hasActions && (
         <View style={styles.actionsContainer}>
-          <ActionsList actions={actions} />
+          <ActionsList actions={actions} onActionPress={onActionPress} />
         </View>
       )}
     </Pressable>
@@ -238,6 +236,7 @@ export function RecordingsList({
   onRetry,
   onDelete,
   onShare,
+  onActionPress,
 }: RecordingsListProps) {
   const colors = useColors();
   const [recordingToDelete, setRecordingToDelete] = useState<Recording | null>(null);
@@ -288,6 +287,7 @@ export function RecordingsList({
             onShare={onShare}
             isExpanded={expandedIds.has(item.id)}
             onToggleExpand={() => toggleExpand(item.id)}
+            onActionPress={onActionPress}
           />
         )}
         renderSectionHeader={({ section }) => (

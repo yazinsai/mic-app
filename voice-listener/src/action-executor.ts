@@ -5,6 +5,7 @@ import { db, id, lookup } from "./db";
 import { initPromptVersioning, getCurrentVersionId } from "./prompt-versioning";
 import { classifyError } from "./error-categories";
 import { loadPrompt } from "./prompt-loader";
+import { notifyActionCompleted, notifyActionFailed } from "./notifications";
 
 interface DependsOnAction {
   id: string;
@@ -580,11 +581,12 @@ Please address this feedback and continue iterating on the task.`;
       console.error(`\nClaude exited with code ${result.exitCode}`);
       if (result.stderr) console.error("stderr:", result.stderr);
 
+      const errorMsg = `Exit code ${result.exitCode}: ${result.stderr.slice(0, 500)}`;
       const { category } = classifyError(result.exitCode, result.stderr, false);
       await db.transact(
         db.tx.actions[action.id].update({
           status: "failed",
-          errorMessage: `Exit code ${result.exitCode}: ${result.stderr.slice(0, 500)}`,
+          errorMessage: errorMsg,
           completedAt: Date.now(),
           durationMs,
           toolsUsed: totalToolsUsed,
@@ -592,20 +594,26 @@ Please address this feedback and continue iterating on the task.`;
           sessionId: result.sessionId ?? null,
         })
       );
+
+      // Send push notification for failed action
+      await notifyActionFailed(action.id, action.title, errorMsg);
       return logFile;
     }
 
-    // Success - mark as awaiting feedback (requires user review before moving to "done")
-    console.log(`\nAction ${action.id} completed successfully, awaiting review`);
+    // Success - mark as completed (goes directly to Done tab)
+    console.log(`\nAction ${action.id} completed successfully`);
     await db.transact(
       db.tx.actions[action.id].update({
-        status: "awaiting_feedback",
+        status: "completed",
         completedAt: Date.now(),
         durationMs,
         toolsUsed: totalToolsUsed,
         sessionId: result.sessionId ?? null,
       })
     );
+
+    // Send push notification for completed action
+    await notifyActionCompleted(action.id, action.title, action.type);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error(`Error executing action ${action.id}:`, errMsg);
@@ -624,6 +632,9 @@ Please address this feedback and continue iterating on the task.`;
         errorCategory: category,
       })
     );
+
+    // Send push notification for failed action
+    await notifyActionFailed(action.id, action.title, errMsg);
   }
 
   return logFile;

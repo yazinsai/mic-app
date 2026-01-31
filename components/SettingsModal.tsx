@@ -59,9 +59,14 @@ export function SettingsModal({
             >
               <Ionicons name="text" size={18} color={colors.primary} />
             </View>
-            <Text style={[styles.countBadge, { color: colors.textMuted }]}>
-              {vocabularyCount} {vocabularyCount === 1 ? "term" : "terms"}
-            </Text>
+            <View style={styles.menuItemContent}>
+              <Text style={[styles.menuItemLabel, { color: colors.textPrimary }]}>
+                Dictionary Terms
+              </Text>
+              <Text style={[styles.countBadge, { color: colors.textMuted }]}>
+                {vocabularyCount} {vocabularyCount === 1 ? "term" : "terms"}
+              </Text>
+            </View>
             <Ionicons
               name="chevron-forward"
               size={18}
@@ -110,8 +115,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  menuItemContent: {
+    flex: 1,
+  },
+  menuItemLabel: {
+    fontSize: typography.base,
+    fontWeight: "500",
+  },
   countBadge: {
     fontSize: typography.sm,
-    flex: 1,
+    marginTop: 2,
   },
 });

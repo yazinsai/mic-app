@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Pressable, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { InstaQLEntity } from "@instantdb/react-native";
 import type { AppSchema } from "@/instant.schema";
@@ -81,10 +81,16 @@ export function ActionItem({ action }: ActionItemProps) {
   const typeConfig = typeColors[action.type as ActionType] ?? typeColors.note;
   const statusDisplay = getStatusDisplay(action, colors, isDark);
 
+  // Show unread indicator for completed/cancelled actions that haven't been viewed
+  const isUnread = (action.status === "completed" || action.status === "cancelled") && !action.readAt;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.badges}>
+          {isUnread && (
+            <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+          )}
           <View style={[styles.typeBadge, { backgroundColor: typeConfig.bg }]}>
             <Text style={[styles.typeBadgeText, { color: typeConfig.color }]}>
               {typeConfig.label}
@@ -126,6 +132,38 @@ export function ActionItem({ action }: ActionItemProps) {
           </Text>
         </View>
       )}
+      {/* Prominent result URL button */}
+      {action.deployUrl && (
+        <Pressable
+          style={({ pressed }) => [
+            styles.resultUrlButton,
+            {
+              // Use explicit blue color with fallback to ensure visibility
+              backgroundColor: colors.primary || "#3b82f6",
+              // Add subtle shadow in light mode for better visibility
+              ...(isDark ? {} : {
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 4,
+                elevation: 3,
+              }),
+            },
+            pressed && styles.resultUrlButtonPressed,
+          ]}
+          onPress={(e) => {
+            e.stopPropagation();
+            Linking.openURL(action.deployUrl!);
+          }}
+        >
+          <View style={styles.resultUrlButtonContent}>
+            <Ionicons name="open-outline" size={16} color="#ffffff" style={styles.resultUrlIcon} />
+            <Text style={[styles.resultUrlButtonText, { color: "#ffffff" }]}>
+              {action.deployUrlLabel || "Open App"}
+            </Text>
+          </View>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -145,6 +183,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   typeBadge: {
     paddingHorizontal: spacing.sm,
@@ -202,5 +245,26 @@ const styles = StyleSheet.create({
   dependencyText: {
     fontSize: typography.xs,
     flex: 1,
+  },
+  resultUrlButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
+  },
+  resultUrlButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resultUrlIcon: {
+    marginRight: spacing.sm,
+  },
+  resultUrlButtonPressed: {
+    opacity: 0.8,
+  },
+  resultUrlButtonText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
 });
