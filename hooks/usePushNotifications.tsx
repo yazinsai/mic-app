@@ -36,6 +36,7 @@ interface PushNotificationsContextValue {
   permissionStatus: "granted" | "denied" | "undetermined";
   enableNotifications: () => Promise<boolean>;
   disableNotifications: () => Promise<void>;
+  debugLog: string[];
 }
 
 const PushNotificationsContext = createContext<PushNotificationsContextValue | null>(null);
@@ -47,9 +48,17 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
   const [isEnabled, setIsEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [permissionStatus, setPermissionStatus] = useState<"granted" | "denied" | "undetermined">("undetermined");
+  const [debugLog, setDebugLog] = useState<string[]>([]);
   const notificationListener = useRef<ReturnType<typeof Notifications.addNotificationReceivedListener>>();
   const responseListener = useRef<ReturnType<typeof Notifications.addNotificationResponseReceivedListener>>();
   const hasRegistered = useRef(false);
+
+  const log = useCallback((msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = `[${timestamp}] ${msg}`;
+    console.log(entry);
+    setDebugLog(prev => [...prev.slice(-19), entry]); // Keep last 20 entries
+  }, []);
 
   const clearLastActionId = useCallback(() => {
     setLastActionId(null);
@@ -60,11 +69,13 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
     const now = Date.now();
     const platform = Platform.OS;
 
+    log(`saveToken: querying existing...`);
     const { data } = await db.queryOnce({
       pushTokens: {
         $: { where: { token } },
       },
     });
+    log(`saveToken: found ${data.pushTokens.length} existing`);
 
     if (data.pushTokens.length > 0) {
       const existingId = data.pushTokens[0].id;
@@ -73,7 +84,7 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
           updatedAt: now,
         })
       );
-      console.log("Push token updated");
+      log("saveToken: updated existing");
     } else {
       await db.transact(
         db.tx.pushTokens[id()].update({
@@ -83,9 +94,9 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
           updatedAt: now,
         })
       );
-      console.log("Push token saved");
+      log("saveToken: created new");
     }
-  }, []);
+  }, [log]);
 
   // Delete token from InstantDB
   const deleteTokenFromDb = useCallback(async (token: string) => {
@@ -104,26 +115,34 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
 
   // Enable notifications
   const enableNotifications = useCallback(async (): Promise<boolean> => {
+    log("enable: starting...");
     setIsLoading(true);
     try {
-      const token = await registerForPushNotificationsAsync();
+      const token = await registerForPushNotificationsAsync(log);
+      log(`enable: token=${token ? token.slice(0, 20) + "..." : "null"}`);
+
       const { status } = await Notifications.getPermissionsAsync();
+      log(`enable: permission=${status}`);
       setPermissionStatus(status === "granted" ? "granted" : status === "denied" ? "denied" : "undetermined");
 
       if (token) {
+        log("enable: saving to DB...");
         await saveTokenToDb(token);
+        log("enable: saved! setting state...");
         setExpoPushToken(token);
         setIsEnabled(true);
+        log("enable: SUCCESS");
         return true;
       }
+      log("enable: no token, FAILED");
       return false;
     } catch (error) {
-      console.error("Error enabling notifications:", error);
+      log(`enable: ERROR - ${error instanceof Error ? error.message : String(error)}`);
       return false;
     } finally {
       setIsLoading(false);
     }
-  }, [saveTokenToDb]);
+  }, [saveTokenToDb, log]);
 
   // Disable notifications
   const disableNotifications = useCallback(async () => {
@@ -141,43 +160,66 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
     }
   }, [expoPushToken, deleteTokenFromDb]);
 
-  // Check initial status and register if permitted
+  // Check initial status - query DB for existing token
   useEffect(() => {
     async function initializeNotifications() {
       if (hasRegistered.current) return;
       hasRegistered.current = true;
 
+      log("init: starting...");
+
       // Check permission status
       const { status } = await Notifications.getPermissionsAsync();
+      log(`init: permission=${status}`);
       setPermissionStatus(status === "granted" ? "granted" : status === "denied" ? "denied" : "undetermined");
 
-      if (status !== "granted") {
-        setIsLoading(false);
-        return;
+      // Check if we have a token registered in the DB
+      try {
+        log("init: checking DB for tokens...");
+        const { data } = await db.queryOnce({ pushTokens: {} });
+        log(`init: found ${data.pushTokens.length} tokens in DB`);
+
+        if (data.pushTokens.length > 0) {
+          // Token exists in DB - we're enabled
+          log("init: using existing token");
+          setExpoPushToken(data.pushTokens[0].token);
+          setIsEnabled(true);
+          setIsLoading(false);
+          return;
+        }
+      } catch (error) {
+        log(`init: DB error - ${error instanceof Error ? error.message : String(error)}`);
       }
 
-      console.log("Registering for push notifications...");
-      const token = await registerForPushNotificationsAsync();
+      // No token in DB - check if we can auto-register (permission already granted)
+      if (status === "granted") {
+        log("init: auto-registering...");
+        const token = await registerForPushNotificationsAsync(log);
 
-      if (token) {
-        console.log("Got push token:", token);
-        setExpoPushToken(token);
-        setIsEnabled(true);
+        if (token) {
+          log(`init: got token, saving...`);
+          setExpoPushToken(token);
+          setIsEnabled(true);
 
-        try {
-          await saveTokenToDb(token);
-        } catch (error) {
-          console.error("Error saving push token:", error);
+          try {
+            await saveTokenToDb(token);
+            log("init: token saved");
+          } catch (error) {
+            log(`init: save error - ${error instanceof Error ? error.message : String(error)}`);
+          }
+        } else {
+          log("init: no token received");
         }
       } else {
-        console.log("No push token received (permission denied or not a physical device)");
+        log("init: permission not granted, skipping");
       }
 
       setIsLoading(false);
+      log("init: done");
     }
 
     initializeNotifications();
-  }, [saveTokenToDb]);
+  }, [saveTokenToDb, log]);
 
   // Check if app was opened from a notification
   useEffect(() => {
@@ -231,6 +273,7 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
         permissionStatus,
         enableNotifications,
         disableNotifications,
+        debugLog,
       }}
     >
       {children}

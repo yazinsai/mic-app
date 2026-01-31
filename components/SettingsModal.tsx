@@ -1,4 +1,4 @@
-import { View, Text, Pressable, Modal, StyleSheet, Switch, Linking } from "react-native";
+import { View, Text, Pressable, Modal, StyleSheet, Switch, Linking, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { spacing, typography, radii } from "@/constants/Colors";
 import { useThemeColors } from "@/hooks/useThemeColors";
@@ -24,6 +24,7 @@ export function SettingsModal({
     permissionStatus,
     enableNotifications,
     disableNotifications,
+    debugLog,
   } = usePushNotifications();
 
   const handleNotificationToggle = async (value: boolean) => {
@@ -56,12 +57,13 @@ export function SettingsModal({
         style={[styles.overlay, { backgroundColor: colors.overlayLight }]}
         onPress={onClose}
       >
-        <View
+        <Pressable
           style={[
             styles.modal,
             { backgroundColor: colors.backgroundElevated },
             !isDark && styles.modalLightBorder,
           ]}
+          onPress={(e) => e.stopPropagation()}
         >
           <Text style={[styles.title, { color: colors.textPrimary }]}>
             Settings
@@ -145,7 +147,29 @@ export function SettingsModal({
               color={colors.textMuted}
             />
           </Pressable>
-        </View>
+
+          {/* Debug Log */}
+          {debugLog.length > 0 && (
+            <View style={styles.debugContainer}>
+              <Text style={[styles.debugTitle, { color: colors.textMuted }]}>
+                Debug Log
+              </Text>
+              <ScrollView style={styles.debugScroll}>
+                {debugLog.map((entry, i) => (
+                  <Text
+                    key={i}
+                    style={[
+                      styles.debugEntry,
+                      { color: entry.includes("ERROR") ? "#ef4444" : colors.textMuted },
+                    ]}
+                  >
+                    {entry}
+                  </Text>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </Pressable>
       </Pressable>
     </Modal>
   );
@@ -197,5 +221,26 @@ const styles = StyleSheet.create({
   countBadge: {
     fontSize: typography.sm,
     marginTop: 2,
+  },
+  debugContainer: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(128, 128, 128, 0.2)",
+  },
+  debugTitle: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    marginBottom: spacing.xs,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  debugScroll: {
+    maxHeight: 120,
+  },
+  debugEntry: {
+    fontSize: 10,
+    fontFamily: "monospace",
+    lineHeight: 14,
   },
 });
