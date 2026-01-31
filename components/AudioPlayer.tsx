@@ -24,6 +24,9 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+const PLAYBACK_SPEEDS = [1, 1.5, 2] as const;
+type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
+
 export function AudioPlayer({ uri, duration: initialDuration, title }: AudioPlayerProps) {
   const colors = useColors();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -31,6 +34,7 @@ export function AudioPlayer({ uri, duration: initialDuration, title }: AudioPlay
   const [isLoading, setIsLoading] = useState(false);
   const [waveformWidth, setWaveformWidth] = useState(0);
   const [displayDuration, setDisplayDuration] = useState(initialDuration);
+  const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const soundRef = useRef<Audio.Sound | null>(null);
   const durationMs = useRef(initialDuration * 1000);
   const progress = useSharedValue(0);
@@ -42,6 +46,17 @@ export function AudioPlayer({ uri, duration: initialDuration, title }: AudioPlay
       }
     };
   }, []);
+
+  const cyclePlaybackSpeed = async () => {
+    const currentIndex = PLAYBACK_SPEEDS.indexOf(playbackSpeed);
+    const nextIndex = (currentIndex + 1) % PLAYBACK_SPEEDS.length;
+    const newSpeed = PLAYBACK_SPEEDS[nextIndex];
+    setPlaybackSpeed(newSpeed);
+
+    if (soundRef.current) {
+      await soundRef.current.setRateAsync(newSpeed, true);
+    }
+  };
 
   const seekTo = async (positionMs: number) => {
     if (soundRef.current) {
@@ -63,7 +78,7 @@ export function AudioPlayer({ uri, duration: initialDuration, title }: AudioPlay
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       const { sound, status } = await Audio.Sound.createAsync(
         { uri },
-        { shouldPlay: true }
+        { shouldPlay: true, rate: playbackSpeed, shouldCorrectPitch: true }
       );
       soundRef.current = sound;
 
@@ -220,6 +235,20 @@ export function AudioPlayer({ uri, duration: initialDuration, title }: AudioPlay
         <Text style={[styles.time, { color: colors.textTertiary }]}>
           {formatTime(position)} / {formatTime(displayDuration)}
         </Text>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.speedButton,
+            { backgroundColor: colors.textMuted + "30" },
+            pressed && styles.speedButtonPressed,
+          ]}
+          onPress={cyclePlaybackSpeed}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[styles.speedText, { color: colors.textSecondary }]}>
+            {playbackSpeed}x
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -311,5 +340,21 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     minWidth: 70,
     textAlign: "right",
+  },
+  speedButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
+    minWidth: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  speedButtonPressed: {
+    opacity: 0.7,
+  },
+  speedText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
   },
 });

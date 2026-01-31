@@ -8,6 +8,7 @@ import { ShareIntentProvider } from "expo-share-intent";
 
 import { ThemeProvider, useThemeColors } from "@/hooks/useThemeColors";
 import { ShareIntentHandler } from "@/hooks/useShareIntent";
+import { PushNotificationsProvider } from "@/hooks/usePushNotifications";
 
 function AppContent() {
   const { colors, isDark } = useThemeColors();
@@ -41,9 +42,11 @@ export default function RootLayout() {
   return (
     <ShareIntentProvider>
       <ThemeProvider>
-        <ShareIntentHandler>
-          <AppContent />
-        </ShareIntentHandler>
+        <PushNotificationsProvider>
+          <ShareIntentHandler>
+            <AppContent />
+          </ShareIntentHandler>
+        </PushNotificationsProvider>
       </ThemeProvider>
     </ShareIntentProvider>
   );

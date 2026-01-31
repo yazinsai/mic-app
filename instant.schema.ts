@@ -12,6 +12,8 @@ const _schema = i.schema({
       email: i.string().unique().indexed().optional(),
       imageURL: i.string().optional(),
       type: i.string().optional(),
+      // Expo push notification token for this device
+      pushToken: i.string().optional(),
     }),
     colors: i.entity({
       value: i.string(),
@@ -71,6 +73,9 @@ const _schema = i.schema({
       // URL to deployed app (e.g., dokku deployment)
       deployUrl: i.string().optional(),
 
+      // Custom label for the deploy/result URL button (defaults to "Open App" if not set)
+      deployUrlLabel: i.string().optional(),
+
       // Live progress from log watcher: JSON with currentTask, todos, recentTools, etc.
       progress: i.string().optional(),
 
@@ -102,6 +107,9 @@ const _schema = i.schema({
 
       // Deployment mode: true = PR only, false/null = deploy
       prOnly: i.boolean().optional(),
+
+      // Timestamp when user viewed this action (for unread indicators)
+      readAt: i.number().optional(),
     }),
     promptVersions: i.entity({
       version: i.string().unique().indexed(), // Hash-based version ID (first 12 chars of SHA256)
@@ -122,6 +130,12 @@ const _schema = i.schema({
       name: i.string().unique().indexed(), // "extraction" | "execution"
       lastSeen: i.number().indexed(),
       status: i.string().optional(), // Optional status message
+    }),
+    pushTokens: i.entity({
+      token: i.string().unique().indexed(), // Expo push token
+      platform: i.string().indexed(), // "ios" | "android"
+      createdAt: i.number().indexed(),
+      updatedAt: i.number().indexed(),
     }),
   },
   rooms: {},

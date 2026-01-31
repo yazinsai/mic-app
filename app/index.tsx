@@ -32,6 +32,7 @@ import { useQueue } from "@/hooks/useQueue";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useVocabulary } from "@/hooks/useVocabulary";
 import { useShareIntentState } from "@/hooks/useShareIntent";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import type { Recording } from "@/lib/queue";
 import type { Action } from "@/components/ActionItem";
 
@@ -185,6 +186,7 @@ export default function HomeScreen() {
 
   const { terms: vocabularyTerms } = useVocabulary();
   const { pendingImages, showRecordingOverlay, clearPendingImages } = useShareIntentState();
+  const { lastActionId: notificationActionId, clearLastActionId } = usePushNotifications();
 
   const {
     recordings,
@@ -257,14 +259,36 @@ export default function HomeScreen() {
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
 
+  // Handle notification taps - open action modal when tapped
+  useEffect(() => {
+    if (notificationActionId && allActions.length > 0) {
+      // Check if the action exists in our list
+      const actionExists = allActions.some((a) => a.id === notificationActionId);
+      if (actionExists) {
+        setSelectedActionId(notificationActionId);
+        setActiveTab("actions"); // Switch to actions tab
+        clearLastActionId();
+      }
+    }
+  }, [notificationActionId, allActions, clearLastActionId]);
+
   // Look up action from allActions to get real-time updates
   const selectedAction: ActionWithRecording | null = selectedActionId
     ? allActions.find((a) => a.id === selectedActionId) ?? null
     : null;
 
-  const handleActionPress = (action: ActionWithRecording) => {
+  const handleActionPress = async (action: ActionWithRecording) => {
     setSelectedActionId(action.id);
     setFeedbackText("");
+
+    // Mark as read if it's a completed/cancelled action that hasn't been viewed yet
+    if ((action.status === "completed" || action.status === "cancelled") && !action.readAt) {
+      await db.transact(
+        db.tx.actions[action.id].update({
+          readAt: Date.now(),
+        })
+      );
+    }
   };
 
   const handleCloseModal = () => {
@@ -471,6 +495,7 @@ export default function HomeScreen() {
             onRetry={retry}
             onDelete={remove}
             onShare={share}
+            onActionPress={handleActionPress}
           />
         )}
       </View>
@@ -813,14 +838,16 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              {/* Open App Button */}
+              {/* Prominent Result URL Button */}
               {selectedAction.deployUrl && (
                 <Pressable
-                  style={({ pressed }) => [styles.openAppButton, { backgroundColor: colors.success }, pressed && styles.buttonPressed]}
+                  style={({ pressed }) => [styles.resultUrlButton, { backgroundColor: colors.primary }, pressed && styles.buttonPressed]}
                   onPress={() => Linking.openURL(selectedAction.deployUrl!)}
                 >
-                  <Ionicons name="open-outline" size={18} color={colors.background} />
-                  <Text style={[styles.openAppButtonText, { color: colors.background }]}>Open App</Text>
+                  <Ionicons name="open-outline" size={20} color={colors.white} />
+                  <Text style={[styles.resultUrlButtonText, { color: colors.white }]}>
+                    {selectedAction.deployUrlLabel || "Open App"}
+                  </Text>
                 </Pressable>
               )}
 
@@ -1285,19 +1312,24 @@ const styles = StyleSheet.create({
   errorSection: {
     marginBottom: spacing.lg,
   },
-  openAppButton: {
+  resultUrlButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.lg,
     marginBottom: spacing.lg,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  openAppButtonText: {
-    fontSize: typography.base,
-    fontWeight: "600",
+  resultUrlButtonText: {
+    fontSize: typography.lg,
+    fontWeight: "700",
   },
   resultBox: {
     padding: spacing.md,

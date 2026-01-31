@@ -1,10 +1,16 @@
 import { useState, useMemo } from "react";
-import { View, Text, SectionList, StyleSheet, Pressable, Alert, TextInput } from "react-native";
+import { View, Text, SectionList, StyleSheet, Pressable, Alert, TextInput, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionItem, type Action } from "./ActionItem";
-import { spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii, actionTypeColorsDark, actionTypeColorsLight } from "@/constants/Colors";
 import { useThemeColors } from "@/hooks/useThemeColors";
 import { db } from "@/lib/db";
+
+// Action types and subtypes
+const ACTION_TYPES = ["CodeChange", "Project", "Research", "Write", "UserTask"] as const;
+const CODE_CHANGE_SUBTYPES = ["bug", "feature", "refactor"] as const;
+type ActionTypeFilter = typeof ACTION_TYPES[number] | "all";
+type CodeChangeSubtype = typeof CODE_CHANGE_SUBTYPES[number] | "all";
 
 interface ActionsScreenProps {
   actions: Action[];
@@ -15,22 +21,11 @@ type TabMode = "review" | "active" | "done";
 
 // Categorization helpers
 function needsReview(action: Action): boolean {
-  // Explicit awaiting_feedback status
+  // Only explicit awaiting_feedback status needs review
   if (action.status === "awaiting_feedback") return true;
 
   // Failed actions need explicit dismiss
   if (action.status === "failed") return true;
-
-  // Completed with last message from assistant = implicit review
-  if (action.status === "completed" && action.messages) {
-    try {
-      const messages = JSON.parse(action.messages) as { role: string }[];
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.role === "assistant") return true;
-    } catch {
-      // ignore parse errors
-    }
-  }
 
   return false;
 }
@@ -40,22 +35,8 @@ function isActive(action: Action): boolean {
 }
 
 function isDone(action: Action): boolean {
-  // Cancelled is always done
-  if (action.status === "cancelled") return true;
-
-  // Completed without pending review
-  if (action.status === "completed") {
-    if (!action.messages) return true;
-    try {
-      const messages = JSON.parse(action.messages) as { role: string }[];
-      const lastMessage = messages[messages.length - 1];
-      return lastMessage?.role !== "assistant";
-    } catch {
-      return true;
-    }
-  }
-
-  return false;
+  // Completed and cancelled go directly to Done
+  return action.status === "completed" || action.status === "cancelled";
 }
 
 function categorizeAction(action: Action): TabMode {
@@ -255,12 +236,131 @@ function TabBar({ value, onChange, counts }: TabBarProps) {
   );
 }
 
+// Type filter chips
+interface TypeFilterProps {
+  selectedType: ActionTypeFilter;
+  selectedSubtype: CodeChangeSubtype;
+  onTypeChange: (type: ActionTypeFilter) => void;
+  onSubtypeChange: (subtype: CodeChangeSubtype) => void;
+  typeCounts: Record<ActionTypeFilter, number>;
+  subtypeCounts: Record<CodeChangeSubtype, number>;
+}
+
+function TypeFilter({ selectedType, selectedSubtype, onTypeChange, onSubtypeChange, typeCounts, subtypeCounts }: TypeFilterProps) {
+  const { colors, isDark } = useThemeColors();
+  const typeColors = isDark ? actionTypeColorsDark : actionTypeColorsLight;
+
+  const typeChips: { key: ActionTypeFilter; label: string; color: string; bg: string }[] = [
+    { key: "all", label: "All", color: colors.textSecondary, bg: colors.textMuted + "20" },
+    ...ACTION_TYPES.map((type) => ({
+      key: type,
+      label: typeColors[type]?.label || type,
+      color: typeColors[type]?.color || colors.textSecondary,
+      bg: typeColors[type]?.bg || colors.textMuted + "20",
+    })),
+  ];
+
+  const subtypeChips: { key: CodeChangeSubtype; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "bug", label: "Bug" },
+    { key: "feature", label: "Feature" },
+    { key: "refactor", label: "Refactor" },
+  ];
+
+  return (
+    <View style={styles.filterContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterChipsRow}
+      >
+        {typeChips.map((chip) => {
+          const isSelected = selectedType === chip.key;
+          const count = typeCounts[chip.key];
+          return (
+            <Pressable
+              key={chip.key}
+              style={[
+                styles.filterChip,
+                { backgroundColor: isSelected ? chip.bg : colors.backgroundElevated },
+                !isDark && !isSelected && styles.filterChipLightBorder,
+                !isDark && !isSelected && { borderColor: colors.border },
+              ]}
+              onPress={() => onTypeChange(chip.key)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: isSelected ? chip.color : colors.textTertiary },
+                  isSelected && styles.filterChipTextSelected,
+                ]}
+              >
+                {chip.label}
+              </Text>
+              {count > 0 && (
+                <View style={[styles.filterChipBadge, { backgroundColor: isSelected ? chip.color + "30" : colors.textMuted + "20" }]}>
+                  <Text style={[styles.filterChipBadgeText, { color: isSelected ? chip.color : colors.textTertiary }]}>
+                    {count > 99 ? "99+" : count}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* Subtype filter row - only show when CodeChange is selected */}
+      {selectedType === "CodeChange" && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.filterChipsRow, styles.subtypeRow]}
+        >
+          <Ionicons name="git-branch-outline" size={14} color={colors.textTertiary} style={styles.subtypeIcon} />
+          {subtypeChips.map((chip) => {
+            const isSelected = selectedSubtype === chip.key;
+            const count = subtypeCounts[chip.key];
+            return (
+              <Pressable
+                key={chip.key}
+                style={[
+                  styles.subtypeChip,
+                  { backgroundColor: isSelected ? colors.primary + "20" : "transparent" },
+                  isSelected && { borderColor: colors.primary + "40" },
+                  !isSelected && { borderColor: colors.border },
+                ]}
+                onPress={() => onSubtypeChange(chip.key)}
+              >
+                <Text
+                  style={[
+                    styles.subtypeChipText,
+                    { color: isSelected ? colors.primary : colors.textTertiary },
+                  ]}
+                >
+                  {chip.label}
+                </Text>
+                {count > 0 && (
+                  <Text style={[styles.subtypeChipCount, { color: isSelected ? colors.primary : colors.textMuted }]}>
+                    {count}
+                  </Text>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
 export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
   const { colors, isDark } = useThemeColors();
   const [tabMode, setTabMode] = useState<TabMode>("review");
   const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<ActionTypeFilter>("all");
+  const [subtypeFilter, setSubtypeFilter] = useState<CodeChangeSubtype>("all");
 
-  // Calculate counts for each tab (before search filtering)
+  // Calculate counts for each tab (before search/type filtering)
   const tabCounts = useMemo(() => {
     return {
       review: actions.filter((a) => categorizeAction(a) === "review").length,
@@ -276,23 +376,87 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
     }
   }, [tabCounts, tabMode]);
 
-  // Filter actions by search query
-  const filteredActions = useMemo(() => {
-    if (!searchQuery.trim()) return actions;
-    const query = searchQuery.toLowerCase();
-    return actions.filter((action) => {
-      return (
-        action.title.toLowerCase().includes(query) ||
-        action.description?.toLowerCase().includes(query) ||
-        action.type.toLowerCase().includes(query) ||
-        action.result?.toLowerCase().includes(query)
-      );
+  // Calculate type counts (for current tab)
+  const typeCounts = useMemo(() => {
+    const tabFiltered = actions.filter((a) => categorizeAction(a) === tabMode);
+    const counts: Record<ActionTypeFilter, number> = {
+      all: tabFiltered.length,
+      CodeChange: 0,
+      Project: 0,
+      Research: 0,
+      Write: 0,
+      UserTask: 0,
+    };
+    tabFiltered.forEach((action) => {
+      const type = action.type as ActionTypeFilter;
+      if (type in counts) {
+        counts[type]++;
+      }
     });
-  }, [actions, searchQuery]);
+    return counts;
+  }, [actions, tabMode]);
+
+  // Calculate subtype counts (for CodeChange in current tab)
+  const subtypeCounts = useMemo(() => {
+    const codeChangeActions = actions.filter(
+      (a) => categorizeAction(a) === tabMode && a.type === "CodeChange"
+    );
+    const counts: Record<CodeChangeSubtype, number> = {
+      all: codeChangeActions.length,
+      bug: 0,
+      feature: 0,
+      refactor: 0,
+    };
+    codeChangeActions.forEach((action) => {
+      const subtype = action.subtype as CodeChangeSubtype;
+      if (subtype && subtype in counts) {
+        counts[subtype]++;
+      }
+    });
+    return counts;
+  }, [actions, tabMode]);
+
+  // Filter actions by search query and type/subtype
+  const filteredActions = useMemo(() => {
+    let result = actions;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((action) => {
+        return (
+          action.title.toLowerCase().includes(query) ||
+          action.description?.toLowerCase().includes(query) ||
+          action.type.toLowerCase().includes(query) ||
+          action.result?.toLowerCase().includes(query)
+        );
+      });
+    }
+
+    // Apply type filter
+    if (typeFilter !== "all") {
+      result = result.filter((action) => action.type === typeFilter);
+    }
+
+    // Apply subtype filter (only when CodeChange is selected)
+    if (typeFilter === "CodeChange" && subtypeFilter !== "all") {
+      result = result.filter((action) => action.subtype === subtypeFilter);
+    }
+
+    return result;
+  }, [actions, searchQuery, typeFilter, subtypeFilter]);
 
   const sections = useMemo(() => {
     return groupActionsForTab(filteredActions, tabMode);
   }, [tabMode, filteredActions]);
+
+  // Reset subtype filter when type changes away from CodeChange
+  const handleTypeChange = (type: ActionTypeFilter) => {
+    setTypeFilter(type);
+    if (type !== "CodeChange") {
+      setSubtypeFilter("all");
+    }
+  };
 
   // Handle dismiss for failed actions
   const handleDismiss = async (actionId: string) => {
@@ -343,6 +507,16 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
 
       {/* Tab Bar */}
       <TabBar value={tabMode} onChange={setTabMode} counts={tabCounts} />
+
+      {/* Type Filter */}
+      <TypeFilter
+        selectedType={typeFilter}
+        selectedSubtype={subtypeFilter}
+        onTypeChange={handleTypeChange}
+        onSubtypeChange={setSubtypeFilter}
+        typeCounts={typeCounts}
+        subtypeCounts={subtypeCounts}
+      />
 
       {searchQuery.trim() && filteredActions.length === 0 ? (
         <View style={styles.noResults}>
@@ -634,5 +808,67 @@ const styles = StyleSheet.create({
   emptyTabSubtitle: {
     fontSize: typography.sm,
     textAlign: "center",
+  },
+  // Type filter styles
+  filterContainer: {
+    paddingBottom: spacing.sm,
+  },
+  filterChipsRow: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    gap: spacing.xs,
+  },
+  filterChipLightBorder: {
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+  },
+  filterChipTextSelected: {
+    fontWeight: typography.semibold,
+  },
+  filterChipBadge: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 1,
+    borderRadius: radii.full,
+    minWidth: 18,
+    alignItems: "center",
+  },
+  filterChipBadgeText: {
+    fontSize: 10,
+    fontWeight: typography.semibold,
+  },
+  subtypeRow: {
+    marginTop: spacing.sm,
+  },
+  subtypeIcon: {
+    marginRight: spacing.xs,
+    alignSelf: "center",
+  },
+  subtypeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+  },
+  subtypeChipText: {
+    fontSize: typography.xs,
+    fontWeight: typography.medium,
+  },
+  subtypeChipCount: {
+    fontSize: 10,
+    fontWeight: typography.medium,
   },
 });

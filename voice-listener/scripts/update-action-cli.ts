@@ -18,7 +18,7 @@ let actionId: string;
 let field: string;
 let value: string;
 
-const VALID_FIELDS = ["status", "result", "deployUrl"];
+const VALID_FIELDS = ["status", "result", "deployUrl", "deployUrlLabel"];
 
 if (args.length >= 2 && !VALID_FIELDS.includes(args[0])) {
   // First arg is not a field name, so it's an action ID
@@ -36,14 +36,16 @@ if (!actionId || !field) {
   console.error("Usage: $ACTION_CLI <field> <value>");
   console.error("");
   console.error("Fields:");
-  console.error("  status     - Set status (completed, failed, cancelled)");
-  console.error("  result     - Set final result summary");
-  console.error("  deployUrl  - Set deployment URL");
+  console.error("  status         - Set status (completed, failed, cancelled)");
+  console.error("  result         - Set final result summary");
+  console.error("  deployUrl      - Set deployment URL");
+  console.error("  deployUrlLabel - Set custom button text (e.g., 'Download APK')");
   console.error("");
   console.error("Examples:");
   console.error('  $ACTION_CLI status completed');
   console.error('  $ACTION_CLI result "Task completed successfully"');
   console.error('  $ACTION_CLI deployUrl "https://my-app.whhite.com"');
+  console.error('  $ACTION_CLI deployUrlLabel "Download APK"');
   process.exit(1);
 }
 

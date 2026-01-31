@@ -1,13 +1,14 @@
-import { View, Text, FlatList, StyleSheet } from "react-native";
+import { View, Text, FlatList, StyleSheet, Pressable } from "react-native";
 import { ActionItem, type Action } from "./ActionItem";
-import { spacing, typography } from "@/constants/Colors";
+import { spacing, typography, radii } from "@/constants/Colors";
 import { useColors } from "@/hooks/useThemeColors";
 
 interface ActionsListProps {
   actions: Action[];
+  onActionPress?: (action: Action) => void;
 }
 
-export function ActionsList({ actions }: ActionsListProps) {
+export function ActionsList({ actions, onActionPress }: ActionsListProps) {
   const colors = useColors();
 
   if (actions.length === 0) {
@@ -24,7 +25,18 @@ export function ActionsList({ actions }: ActionsListProps) {
       <FlatList
         data={actions}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ActionItem action={item} />}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => onActionPress?.(item)}
+            style={({ pressed }) => [
+              styles.actionPressable,
+              { backgroundColor: colors.backgroundElevated },
+              pressed && styles.actionPressed,
+            ]}
+          >
+            <ActionItem action={item} />
+          </Pressable>
+        )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         scrollEnabled={false}
       />
@@ -44,6 +56,13 @@ const styles = StyleSheet.create({
     fontWeight: typography.medium,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  actionPressable: {
+    borderRadius: radii.md,
+    overflow: "hidden",
+  },
+  actionPressed: {
+    opacity: 0.7,
   },
   separator: {
     height: spacing.sm,

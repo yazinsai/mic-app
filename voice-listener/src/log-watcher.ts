@@ -82,6 +82,22 @@ function genId(): string {
   return `a_${Date.now()}_${++activityCounter}`;
 }
 
+// Verbose internal operations to filter from activity log
+// These are infrastructure commands that don't need to surface to users
+const FILTERED_BASH_DESCRIPTIONS = [
+  /^update-action-cli/i,
+  /^check if scripts directory/i,
+  /^check action_cli/i,
+  /^update action (result|status|deployurl)/i,
+  /^set action (result|status|deployurl)/i,
+  /^run update-action-cli/i,
+];
+
+function shouldFilterBashActivity(description: string | undefined): boolean {
+  if (!description) return false;
+  return FILTERED_BASH_DESCRIPTIONS.some((pattern) => pattern.test(description));
+}
+
 // Map tools to friendly names and emojis
 const TOOL_DISPLAY: Record<string, { icon: string; label: string }> = {
   // Skills & agents get special treatment
@@ -218,6 +234,17 @@ function parseContent(content: string, progress: Progress): boolean {
       const display = getToolDisplay(toolName);
       const detail = extractDetail(toolName, content);
 
+      // Filter out verbose internal operations for Bash
+      if (toolName === "Bash" && shouldFilterBashActivity(detail)) {
+        debug(`Filtered internal Bash: ${detail}`);
+        // Still track for completion but don't add to activities
+        const toolIdMatch = line.match(/"id"\s*:\s*"([^"]+)"/);
+        if (toolIdMatch) {
+          activeActivities.set(toolIdMatch[1], "_filtered");
+        }
+        continue;
+      }
+
       // Determine activity type
       let type: ActivityType = "tool";
       if (toolName === "Task") type = "agent";
@@ -254,6 +281,11 @@ function parseContent(content: string, progress: Progress): boolean {
       if (toolIdMatch) {
         const activityId = activeActivities.get(toolIdMatch[1]);
         if (activityId) {
+          // Skip filtered activities (internal operations)
+          if (activityId === "_filtered") {
+            activeActivities.delete(toolIdMatch[1]);
+            continue;
+          }
           // Check if it's an error
           const isError = line.includes('"is_error":true') || line.includes('"is_error": true');
           completeActivity(progress, activityId, isError ? "error" : "done");
