@@ -43,11 +43,20 @@ Create a new standalone project from an idea.
    - Domain format: `{app-name}.whhite.com` (e.g., `my-app.whhite.com`)
    - After deployment, obtain the URL from dokku output and **set `deployUrl`** in the action record
    - This enables the "Open App" button in the mobile app UI
-5. **Documentation**:
+5. **Browser Testing** (REQUIRED for web apps):
+   - Use `/dev-browser` to open the deployed URL
+   - Verify the app loads correctly
+   - Test core functionality (click buttons, submit forms, navigate pages)
+   - Check for console errors or broken features
+   - If issues found, fix them and re-deploy before completing
+   - Do NOT mark as completed until the app works correctly in the browser
+6. **Documentation**:
    - Update `result` field with research summary, services identified, and plan
    - If deployed, set `deployUrl`
 
 **Note**: This is the only type that creates new projects in `workspace/projects/`.
+
+**Critical**: Never mark a Project as completed without browser testing. An untested deployment is worthless.
 
 ### `Research`
 Questions that need investigation or analysis.
@@ -64,7 +73,13 @@ Content creation - posts, docs, articles, emails.
 1. Understand the audience and tone
 2. Draft the content
 3. For social media: Use `/typefully` to create drafts for LinkedIn and Twitter
-4. Update `result` with the content or draft links
+4. **Store the full content in the `result` field as markdown**
+   - The content MUST be viewable directly in the mobile app
+   - Do NOT save to external files or services only
+   - The `result` field supports markdown and is rendered in the app UI
+   - For social media, still include the content in `result` even if also posted to Typefully
+
+**Important**: The user should be able to read the completed writing in the app without navigating elsewhere.
 
 ### `UserTask`
 Tasks requiring human action (not for AI to execute).
