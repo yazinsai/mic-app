@@ -17,12 +17,17 @@ Notifications.setNotificationHandler({
  * Request push notification permissions and get the Expo push token.
  * Returns the token string or null if permissions were denied or unavailable.
  */
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
+export async function registerForPushNotificationsAsync(
+  log?: (msg: string) => void
+): Promise<string | null> {
+  const _log = log || console.log;
+
   // Push notifications only work on physical devices
   if (!Device.isDevice) {
-    console.log("Push notifications require a physical device");
+    _log("register: not a physical device");
     return null;
   }
+  _log("register: is physical device ✓");
 
   // Set up Android notification channel
   if (Platform.OS === "android") {
@@ -32,22 +37,27 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#FF6B35",
     });
+    _log("register: android channel set ✓");
   }
 
   // Check current permission status
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  _log(`register: existing permission=${existingStatus}`);
   let finalStatus = existingStatus;
 
   // Request permission if not already granted
   if (existingStatus !== "granted") {
+    _log("register: requesting permission...");
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
+    _log(`register: new permission=${finalStatus}`);
   }
 
   if (finalStatus !== "granted") {
-    console.log("Push notification permission not granted");
+    _log("register: permission denied");
     return null;
   }
+  _log("register: permission granted ✓");
 
   // Get the Expo push token
   try {
@@ -55,19 +65,22 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       Constants?.expoConfig?.extra?.eas?.projectId ??
       Constants?.easConfig?.projectId;
 
+    _log(`register: projectId=${projectId || "MISSING"}`);
+
     if (!projectId) {
-      console.error("Project ID not found for push notifications");
+      _log("register: ERROR - no projectId configured");
       return null;
     }
 
+    _log("register: getting expo push token...");
     const tokenResponse = await Notifications.getExpoPushTokenAsync({
       projectId,
     });
 
-    console.log("Expo push token:", tokenResponse.data);
+    _log(`register: SUCCESS token=${tokenResponse.data.slice(0, 25)}...`);
     return tokenResponse.data;
   } catch (error) {
-    console.error("Error getting push token:", error);
+    _log(`register: ERROR - ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
