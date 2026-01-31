@@ -1,7 +1,8 @@
-import { View, Text, Pressable, Modal, StyleSheet } from "react-native";
+import { View, Text, Pressable, Modal, StyleSheet, Switch, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { spacing, typography, radii } from "@/constants/Colors";
 import { useThemeColors } from "@/hooks/useThemeColors";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 interface SettingsModalProps {
   visible: boolean;
@@ -17,6 +18,32 @@ export function SettingsModal({
   vocabularyCount,
 }: SettingsModalProps) {
   const { colors, isDark } = useThemeColors();
+  const {
+    isEnabled: notificationsEnabled,
+    isLoading: notificationsLoading,
+    permissionStatus,
+    enableNotifications,
+    disableNotifications,
+  } = usePushNotifications();
+
+  const handleNotificationToggle = async (value: boolean) => {
+    if (value) {
+      const success = await enableNotifications();
+      // If permission was denied, open settings
+      if (!success && permissionStatus === "denied") {
+        Linking.openSettings();
+      }
+    } else {
+      await disableNotifications();
+    }
+  };
+
+  const getNotificationStatusText = () => {
+    if (notificationsLoading) return "Checking...";
+    if (permissionStatus === "denied") return "Denied in Settings";
+    if (notificationsEnabled) return "Enabled";
+    return "Disabled";
+  };
 
   return (
     <Modal
@@ -40,6 +67,51 @@ export function SettingsModal({
             Settings
           </Text>
 
+          {/* Notifications Toggle */}
+          <View
+            style={[
+              styles.menuItem,
+              { borderBottomColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: "#FF6B35" + "20" },
+              ]}
+            >
+              <Ionicons name="notifications" size={18} color="#FF6B35" />
+            </View>
+            <View style={styles.menuItemContent}>
+              <Text style={[styles.menuItemLabel, { color: colors.textPrimary }]}>
+                Push Notifications
+              </Text>
+              <Text style={[styles.countBadge, { color: colors.textMuted }]}>
+                {getNotificationStatusText()}
+              </Text>
+            </View>
+            {permissionStatus === "denied" ? (
+              <Pressable
+                onPress={() => Linking.openSettings()}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={{ color: colors.primary, fontSize: typography.sm }}>
+                  Settings
+                </Text>
+              </Pressable>
+            ) : (
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={handleNotificationToggle}
+                disabled={notificationsLoading}
+                trackColor={{ false: colors.border, true: "#FF6B35" + "80" }}
+                thumbColor={notificationsEnabled ? "#FF6B35" : colors.textMuted}
+                ios_backgroundColor={colors.border}
+              />
+            )}
+          </View>
+
+          {/* Dictionary Terms */}
           <Pressable
             style={({ pressed }) => [
               styles.menuItem,

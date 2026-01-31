@@ -31,6 +31,11 @@ interface PushNotificationsContextValue {
   notification: Notifications.Notification | null;
   lastActionId: string | null;
   clearLastActionId: () => void;
+  isEnabled: boolean;
+  isLoading: boolean;
+  permissionStatus: "granted" | "denied" | "undetermined";
+  enableNotifications: () => Promise<boolean>;
+  disableNotifications: () => Promise<void>;
 }
 
 const PushNotificationsContext = createContext<PushNotificationsContextValue | null>(null);
@@ -39,6 +44,9 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notification, setNotification] = useState<Notifications.Notification | null>(null);
   const [lastActionId, setLastActionId] = useState<string | null>(null);
+  const [isEnabled, setIsEnabled] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [permissionStatus, setPermissionStatus] = useState<"granted" | "denied" | "undetermined">("undetermined");
   const notificationListener = useRef<ReturnType<typeof Notifications.addNotificationReceivedListener>>();
   const responseListener = useRef<ReturnType<typeof Notifications.addNotificationResponseReceivedListener>>();
   const hasRegistered = useRef(false);
@@ -47,12 +55,106 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
     setLastActionId(null);
   }, []);
 
-  // Register for push notifications and save token to pushTokens entity
+  // Save token to InstantDB
+  const saveTokenToDb = useCallback(async (token: string) => {
+    const now = Date.now();
+    const platform = Platform.OS;
+
+    const { data } = await db.queryOnce({
+      pushTokens: {
+        $: { where: { token } },
+      },
+    });
+
+    if (data.pushTokens.length > 0) {
+      const existingId = data.pushTokens[0].id;
+      await db.transact(
+        db.tx.pushTokens[existingId].update({
+          updatedAt: now,
+        })
+      );
+      console.log("Push token updated");
+    } else {
+      await db.transact(
+        db.tx.pushTokens[id()].update({
+          token,
+          platform,
+          createdAt: now,
+          updatedAt: now,
+        })
+      );
+      console.log("Push token saved");
+    }
+  }, []);
+
+  // Delete token from InstantDB
+  const deleteTokenFromDb = useCallback(async (token: string) => {
+    const { data } = await db.queryOnce({
+      pushTokens: {
+        $: { where: { token } },
+      },
+    });
+
+    if (data.pushTokens.length > 0) {
+      const existingId = data.pushTokens[0].id;
+      await db.transact(db.tx.pushTokens[existingId].delete());
+      console.log("Push token deleted");
+    }
+  }, []);
+
+  // Enable notifications
+  const enableNotifications = useCallback(async (): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const token = await registerForPushNotificationsAsync();
+      const { status } = await Notifications.getPermissionsAsync();
+      setPermissionStatus(status === "granted" ? "granted" : status === "denied" ? "denied" : "undetermined");
+
+      if (token) {
+        await saveTokenToDb(token);
+        setExpoPushToken(token);
+        setIsEnabled(true);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error enabling notifications:", error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [saveTokenToDb]);
+
+  // Disable notifications
+  const disableNotifications = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      if (expoPushToken) {
+        await deleteTokenFromDb(expoPushToken);
+      }
+      setExpoPushToken(null);
+      setIsEnabled(false);
+    } catch (error) {
+      console.error("Error disabling notifications:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [expoPushToken, deleteTokenFromDb]);
+
+  // Check initial status and register if permitted
   useEffect(() => {
-    async function registerAndSaveToken() {
-      // Only register once
+    async function initializeNotifications() {
       if (hasRegistered.current) return;
       hasRegistered.current = true;
+
+      // Check permission status
+      const { status } = await Notifications.getPermissionsAsync();
+      setPermissionStatus(status === "granted" ? "granted" : status === "denied" ? "denied" : "undetermined");
+
+      if (status !== "granted") {
+        setIsLoading(false);
+        return;
+      }
 
       console.log("Registering for push notifications...");
       const token = await registerForPushNotificationsAsync();
@@ -60,50 +162,22 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
       if (token) {
         console.log("Got push token:", token);
         setExpoPushToken(token);
+        setIsEnabled(true);
 
-        // Save token to pushTokens entity (no auth required)
         try {
-          const now = Date.now();
-          const platform = Platform.OS;
-
-          // Try to find existing token first
-          const { data } = await db.queryOnce({
-            pushTokens: {
-              $: { where: { token } },
-            },
-          });
-
-          if (data.pushTokens.length > 0) {
-            // Update existing token's timestamp
-            const existingId = data.pushTokens[0].id;
-            await db.transact(
-              db.tx.pushTokens[existingId].update({
-                updatedAt: now,
-              })
-            );
-            console.log("Push token updated");
-          } else {
-            // Create new token record
-            await db.transact(
-              db.tx.pushTokens[id()].update({
-                token,
-                platform,
-                createdAt: now,
-                updatedAt: now,
-              })
-            );
-            console.log("Push token saved");
-          }
+          await saveTokenToDb(token);
         } catch (error) {
           console.error("Error saving push token:", error);
         }
       } else {
         console.log("No push token received (permission denied or not a physical device)");
       }
+
+      setIsLoading(false);
     }
 
-    registerAndSaveToken();
-  }, []);
+    initializeNotifications();
+  }, [saveTokenToDb]);
 
   // Check if app was opened from a notification
   useEffect(() => {
@@ -152,6 +226,11 @@ export function PushNotificationsProvider({ children }: { children: ReactNode })
         notification,
         lastActionId,
         clearLastActionId,
+        isEnabled,
+        isLoading,
+        permissionStatus,
+        enableNotifications,
+        disableNotifications,
       }}
     >
       {children}
