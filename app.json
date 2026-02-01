@@ -22,7 +22,8 @@
         "backgroundColor": "#0B0B0C"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.yazinsai.micapp"
+      "package": "com.yazinsai.micapp",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
