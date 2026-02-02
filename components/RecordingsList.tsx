@@ -5,7 +5,7 @@ import { DeleteConfirmationOverlay } from "./DeleteConfirmationOverlay";
 import { ActionsList } from "./ActionsList";
 import type { Recording } from "@/lib/queue";
 import type { Action } from "./ActionItem";
-import { spacing, typography, radii } from "@/constants/Colors";
+import { spacing, typography, radii, fontFamily } from "@/constants/Colors";
 import { useColors } from "@/hooks/useThemeColors";
 
 interface RecordingsListProps {
@@ -176,9 +176,15 @@ function RecordingItem({
         </View>
       )}
 
-      {/* Transcript snippet - only show when collapsed or no actions */}
-      {!isExpanded && !statusInfo && recording.transcription && (
-        <Text style={[styles.transcriptSnippet, { color: colors.textSecondary }]} numberOfLines={2}>
+      {/* Transcript - snippet when collapsed, full when expanded */}
+      {!statusInfo && recording.transcription && (
+        <Text
+          style={[
+            isExpanded ? styles.transcriptFull : styles.transcriptSnippet,
+            { color: colors.textSecondary },
+          ]}
+          numberOfLines={isExpanded ? undefined : 2}
+        >
           {recording.transcription}
         </Text>
       )}
@@ -323,8 +329,10 @@ const styles = StyleSheet.create({
   },
   sectionHeaderText: {
     fontSize: typography.xs,
+    fontFamily: fontFamily.semibold,
     fontWeight: typography.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: typography.tracking.wider,
+    textTransform: "uppercase",
   },
   empty: {
     flex: 1,
@@ -399,5 +407,11 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     lineHeight: typography.sm * 1.5,
     marginTop: spacing.sm,
+  },
+  transcriptFull: {
+    fontSize: typography.sm,
+    lineHeight: typography.sm * 1.6,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
 });

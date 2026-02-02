@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
-import { View, Text, SectionList, StyleSheet, Pressable, Alert, TextInput, ScrollView } from "react-native";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { View, Text, SectionList, StyleSheet, Pressable, Alert, TextInput, ScrollView, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ActionItem, type Action } from "./ActionItem";
 import { DotPattern } from "./DotPattern";
 import { spacing, typography, radii, fontFamily, actionTypeColorsDark, actionTypeColorsLight } from "@/constants/Colors";
 import { useThemeColors } from "@/hooks/useThemeColors";
+import { useActionsScreenState } from "@/hooks/useActionsScreenState";
 import { db } from "@/lib/db";
 
 // Action types and subtypes
@@ -356,10 +357,14 @@ function TypeFilter({ selectedType, selectedSubtype, onTypeChange, onSubtypeChan
 
 export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
   const { colors, isDark } = useThemeColors();
-  const [tabMode, setTabMode] = useState<TabMode>("review");
+  const { tabMode, setTabMode, scrollPosition, setScrollPosition, isLoaded } = useActionsScreenState();
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ActionTypeFilter>("all");
   const [subtypeFilter, setSubtypeFilter] = useState<CodeChangeSubtype>("all");
+
+  // Ref for SectionList to restore scroll position
+  const sectionListRef = useRef<SectionList<Action>>(null);
+  const hasRestoredScroll = useRef(false);
 
   // Calculate counts for each tab (before search/type filtering)
   const tabCounts = useMemo(() => {
@@ -371,11 +376,12 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
   }, [actions]);
 
   // Auto-switch to active tab if review is empty but active has items
-  useMemo(() => {
-    if (tabCounts.review === 0 && tabCounts.active > 0 && tabMode === "review") {
+  // Only auto-switch on initial load when we haven't loaded persisted state yet
+  useEffect(() => {
+    if (isLoaded && tabCounts.review === 0 && tabCounts.active > 0 && tabMode === "review") {
       setTabMode("active");
     }
-  }, [tabCounts, tabMode]);
+  }, [tabCounts, tabMode, isLoaded, setTabMode]);
 
   // Calculate type counts (for current tab)
   const typeCounts = useMemo(() => {
@@ -468,6 +474,32 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
     );
   };
 
+  // Handle scroll events to persist position
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    setScrollPosition(offsetY);
+  }, [setScrollPosition]);
+
+  // Restore scroll position after content loads
+  const handleContentSizeChange = useCallback(() => {
+    if (isLoaded && !hasRestoredScroll.current && scrollPosition > 0 && sections.length > 0) {
+      hasRestoredScroll.current = true;
+      // Small delay to ensure the list is rendered
+      setTimeout(() => {
+        sectionListRef.current?.getScrollResponder()?.scrollTo({
+          y: scrollPosition,
+          animated: false,
+        });
+      }, 100);
+    }
+  }, [isLoaded, scrollPosition, sections.length]);
+
+  // Reset scroll restoration flag when tab changes
+  const handleTabChange = useCallback((mode: TabMode) => {
+    hasRestoredScroll.current = false;
+    setTabMode(mode);
+  }, [setTabMode]);
+
   if (actions.length === 0) {
     return (
       <View style={styles.empty}>
@@ -518,7 +550,7 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
       </View>
 
       {/* Tab Bar */}
-      <TabBar value={tabMode} onChange={setTabMode} counts={tabCounts} />
+      <TabBar value={tabMode} onChange={handleTabChange} counts={tabCounts} />
 
       {/* Type Filter */}
       <TypeFilter
@@ -567,6 +599,7 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
         </View>
       ) : (
         <SectionList
+          ref={sectionListRef}
           sections={sections}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
@@ -603,6 +636,9 @@ export function ActionsScreen({ actions, onActionPress }: ActionsScreenProps) {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          onContentSizeChange={handleContentSizeChange}
         />
       )}
     </View>

@@ -149,7 +149,6 @@ export function RecordingOverlay({
         <Waveform
           metering={metering}
           isActive={isRecording && !isPaused}
-          dotCount={9}
           height={140}
           color={colors.primary}
         />

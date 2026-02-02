@@ -1,103 +1,67 @@
-import { useEffect, useMemo } from "react";
-import { View, StyleSheet } from "react-native";
+import { useEffect, useMemo, useRef } from "react";
+import { View, StyleSheet, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
-  Easing,
 } from "react-native-reanimated";
 import { useColors } from "@/hooks/useThemeColors";
 
 interface WaveformProps {
   metering: number;
   isActive: boolean;
-  dotCount?: number;
+  barCount?: number;
   height?: number;
   color?: string;
 }
 
 function normalizeMetering(metering: number): number {
-  const min = -60;
-  const max = 0;
+  const min = -50;
+  const max = -5;
   const clamped = Math.max(min, Math.min(max, metering));
   return (clamped - min) / (max - min);
 }
 
 /**
- * WaveformDot - Individual animated dot that pulses with audio levels
- * Creates the beaded/pixelated aesthetic matching the app icon
+ * AnimatedBar - A single vertical bar that responds to audio level
+ * Uses spring animation for natural, organic movement
  */
-function WaveformDot({
-  metering,
-  index,
-  totalDots,
-  isActive,
-  baseSize,
-  maxSize,
+function AnimatedBar({
+  targetHeight,
+  minHeight,
+  maxHeight,
+  width,
   color,
 }: {
-  metering: number;
-  index: number;
-  totalDots: number;
-  isActive: boolean;
-  baseSize: number;
-  maxSize: number;
+  targetHeight: number;
+  minHeight: number;
+  maxHeight: number;
+  width: number;
   color: string;
 }) {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(0.3);
+  const height = useSharedValue(minHeight);
 
   useEffect(() => {
-    if (!isActive) {
-      scale.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.exp) });
-      opacity.value = withTiming(0.3, { duration: 300 });
-      return;
-    }
-
-    const normalized = normalizeMetering(metering);
-
-    // Create wave pattern - dots closer to center are more responsive
-    const centerIndex = totalDots / 2;
-    const distanceFromCenter = Math.abs(index - centerIndex) / centerIndex;
-    const positionFactor = 1 - distanceFromCenter * 0.6;
-
-    // Add organic variation
-    const phase = (index / totalDots) * Math.PI * 2;
-    const waveFactor = 0.7 + Math.sin(phase + Date.now() / 200) * 0.3;
-
-    // Calculate final scale (between 1 and maxScale based on audio level)
-    const maxScale = maxSize / baseSize;
-    const targetScale = 1 + (normalized * positionFactor * waveFactor * (maxScale - 1));
-
-    // Higher opacity for louder sounds
-    const targetOpacity = 0.4 + normalized * positionFactor * 0.6;
-
-    scale.value = withSpring(targetScale, {
-      damping: 15,
-      stiffness: 300,
-      mass: 0.3,
+    height.value = withSpring(targetHeight, {
+      damping: 12,
+      stiffness: 180,
+      mass: 0.4,
     });
-
-    opacity.value = withSpring(targetOpacity, {
-      damping: 20,
-      stiffness: 200,
-    });
-  }, [metering, isActive, index, totalDots, baseSize, maxSize, scale, opacity]);
+  }, [targetHeight, height]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
+    height: height.value,
   }));
 
   return (
     <Animated.View
       style={[
-        styles.dot,
+        styles.bar,
         {
-          width: baseSize,
-          height: baseSize,
-          borderRadius: baseSize / 2,
+          width,
+          minHeight,
+          maxHeight,
+          borderRadius: width / 2,
           backgroundColor: color,
         },
         animatedStyle,
@@ -107,47 +71,90 @@ function WaveformDot({
 }
 
 /**
- * Waveform - Dotted audio visualization matching the app's beaded icon aesthetic
- * Displays as a grid of pulsing dots that respond to audio levels
+ * Waveform - Real-time audio level visualization
+ * All bars respond to current audio level with natural variation
+ * Creates a symmetric, organic waveform like professional audio apps
  */
 export function Waveform({
   metering,
   isActive,
-  dotCount = 7,
-  height = 120,
+  barCount = 32,
+  height = 140,
   color,
 }: WaveformProps) {
   const colors = useColors();
-  const dotColor = color ?? colors.primary;
+  const barColor = color ?? colors.primary;
+  const { width: screenWidth } = useWindowDimensions();
 
-  // Configure dot sizes
-  const baseSize = 8;
-  const maxSize = 16;
-  const rows = 5;
-  const gap = 12;
+  // Bar configuration
+  const barWidth = 4;
+  const barGap = 3;
+  const minBarHeight = 4;
+  const maxBarHeight = height * 0.85;
+
+  // Calculate how many bars can fit
+  const availableWidth = Math.min(screenWidth - 64, 340);
+  const actualBarCount = Math.min(barCount, Math.floor(availableWidth / (barWidth + barGap)));
+
+  // Generate deterministic variation pattern for each bar position
+  // This creates a natural-looking waveform shape
+  const barVariations = useMemo(() => {
+    const variations: number[] = [];
+    const center = actualBarCount / 2;
+
+    for (let i = 0; i < actualBarCount; i++) {
+      // Distance from center (0-1)
+      const distFromCenter = Math.abs(i - center) / center;
+
+      // Base envelope - bars are taller in the center
+      const envelope = 1 - Math.pow(distFromCenter, 1.5) * 0.6;
+
+      // Add subtle pseudo-random variation for organic feel
+      const noise = Math.sin(i * 2.7) * 0.15 + Math.sin(i * 4.3) * 0.1;
+
+      variations.push(Math.max(0.2, Math.min(1, envelope + noise)));
+    }
+    return variations;
+  }, [actualBarCount]);
+
+  // Ref to track smoothed level for natural decay
+  const smoothedLevelRef = useRef(0);
+
+  // Smooth the metering value
+  const normalized = normalizeMetering(metering);
+  const targetLevel = isActive ? normalized : 0;
+
+  // Apply smoothing - fast attack, slower decay
+  const attackSpeed = 0.7;
+  const decaySpeed = 0.15;
+
+  if (targetLevel > smoothedLevelRef.current) {
+    smoothedLevelRef.current = smoothedLevelRef.current + (targetLevel - smoothedLevelRef.current) * attackSpeed;
+  } else {
+    smoothedLevelRef.current = smoothedLevelRef.current + (targetLevel - smoothedLevelRef.current) * decaySpeed;
+  }
+
+  const currentLevel = smoothedLevelRef.current;
 
   return (
     <View style={[styles.container, { height }]}>
-      <View style={[styles.grid, { gap }]}>
-        {Array.from({ length: rows }).map((_, rowIndex) => (
-          <View key={rowIndex} style={[styles.row, { gap }]}>
-            {Array.from({ length: dotCount }).map((_, colIndex) => {
-              const dotIndex = rowIndex * dotCount + colIndex;
-              return (
-                <WaveformDot
-                  key={colIndex}
-                  metering={metering}
-                  index={dotIndex}
-                  totalDots={rows * dotCount}
-                  isActive={isActive}
-                  baseSize={baseSize}
-                  maxSize={maxSize}
-                  color={dotColor}
-                />
-              );
-            })}
-          </View>
-        ))}
+      <View style={[styles.waveformContainer, { gap: barGap }]}>
+        {barVariations.map((variation, index) => {
+          // Calculate target height based on current level and bar's variation
+          const barLevel = currentLevel * variation;
+          const targetHeight = minBarHeight + barLevel * (maxBarHeight - minBarHeight);
+
+          return (
+            <AnimatedBar
+              key={index}
+              targetHeight={Math.max(minBarHeight, targetHeight)}
+              minHeight={minBarHeight}
+              maxHeight={maxBarHeight}
+              width={barWidth}
+              color={barColor}
+            />
+          );
+        })}
       </View>
     </View>
   );
@@ -218,18 +225,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  grid: {
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  row: {
+  waveformContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  dot: {
-    // Individual dot styling applied inline
+  bar: {
+    // Vertical bar - styling applied inline
   },
   miniContainer: {
     flexDirection: "row",
