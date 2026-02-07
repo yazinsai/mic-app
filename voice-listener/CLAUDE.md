@@ -82,7 +82,7 @@ bun run src/action-executor.ts --dry-run --once --limit 1
 ## Action Types
 
 - `CodeChange`: Changes to existing code (subtype: bug|feature|refactor). Requires projectPath.
-- `Project`: New standalone projects/ideas. Creates new directory in workspace/projects/.
+- `Project`: New standalone projects/ideas. Executor now pre-allocates a unique directory in `workspace/projects/` from the action title (e.g. `habit-tracker`, `habit-tracker-2`) and stores it in `action.projectPath` before Claude runs.
 - `Research`: Questions needing investigation or analysis.
 - `Write`: Content creation - posts, docs, articles, emails.
 - `UserTask`: Tasks requiring human action (has task, why_user, prep_allowed, remind_at fields).

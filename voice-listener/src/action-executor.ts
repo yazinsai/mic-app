@@ -6,6 +6,7 @@ import { initPromptVersioning, getCurrentVersionId } from "./prompt-versioning";
 import { classifyError } from "./error-categories";
 import { loadPrompt } from "./prompt-loader";
 import { notifyActionCompleted, notifyActionFailed, notifyActionAwaitingFeedback } from "./notifications";
+import { allocateProjectDirectory } from "./project-generation";
 
 interface DependsOnAction {
   id: string;
@@ -478,21 +479,36 @@ ${"=".repeat(60)}
     return logFile;
   }
 
-  // Build the prompt
-  const prompt = buildExecutionPrompt(action);
-
-  if (logFile) {
-    await appendFile(logFile, `=== PROMPT ===\n${prompt}\n\n=== OUTPUT ===\n`);
-  }
-
   // Resolve project directory
   let projectDir = WORKSPACE_PROJECTS;
-  if (action.projectPath) {
+
+  // For Project actions without an explicit path, pre-allocate a unique directory.
+  // This makes project generation deterministic and prevents collisions.
+  if (action.type === "Project" && !action.projectPath) {
+    const allocated = allocateProjectDirectory(WORKSPACE_PROJECTS, action.title);
+    action.projectPath = allocated.relativePath;
+    projectDir = allocated.absolutePath;
+
+    await db.transact(
+      db.tx.actions[action.id].update({
+        projectPath: allocated.relativePath,
+      })
+    );
+
+    console.log(`Allocated project directory: ${allocated.relativePath}`);
+  } else if (action.projectPath) {
     if (isAbsolute(action.projectPath)) {
       projectDir = action.projectPath;
     } else {
       projectDir = join(WORKSPACE_PROJECTS, action.projectPath);
     }
+  }
+
+  // Build the prompt after project directory resolution so instructions include concrete path.
+  const prompt = buildExecutionPrompt(action);
+
+  if (logFile) {
+    await appendFile(logFile, `=== PROMPT ===\n${prompt}\n\n=== OUTPUT ===\n`);
   }
 
   const executionStartTime = Date.now();
