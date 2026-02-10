@@ -168,34 +168,6 @@ function formatMessageTime(timestamp: number): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" }) + `, ${time}`;
 }
 
-interface ThreadMessage {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: number;
-}
-
-function parseMessages(json: string | undefined | null): ThreadMessage[] {
-  if (!json) return [];
-  try {
-    return JSON.parse(json) as ThreadMessage[];
-  } catch {
-    return [];
-  }
-}
-
-// Activity types for the whimsical timeline
-type ActivityType = "skill" | "tool" | "agent" | "message" | "milestone";
-
-interface Activity {
-  id: string;
-  type: ActivityType;
-  icon: string; // Emoji
-  label: string;
-  detail?: string;
-  timestamp: number;
-  duration?: number;
-  status: "active" | "done" | "error";
-}
 
 interface Progress {
   currentActivity?: string;
