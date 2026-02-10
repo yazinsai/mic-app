@@ -199,8 +199,10 @@ function markdownToHtml(md: string, title: string): string {
   td { padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
   tr:last-child td { border-bottom: none; }
   tbody tr:nth-child(even) { background: #fafafa; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e5e5; font-size: 12px; color: #999; text-align: center; }
+  footer a { color: #999; }
 </style>
-</head><body><h1>${title}</h1>${out.join("\n")}</body></html>`;
+</head><body><h1>${title}</h1>${out.join("\n")}<footer>Generated with <a href="https://github.com/yazinsai/exec">Exec</a></footer></body></html>`;
 }
 
 function inline(text: string): string {
