@@ -16,6 +16,9 @@ import Markdown from "react-native-markdown-display";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import { Ionicons } from "@expo/vector-icons";
 import { RecordingOverlay } from "@/components/RecordingOverlay";
 import { QueueStatus } from "@/components/QueueStatus";
@@ -28,6 +31,7 @@ import { WorkerStatusBadge } from "@/components/WorkerStatusBadge";
 import { RatingSection } from "@/components/RatingSection";
 import { SettingsModal } from "@/components/SettingsModal";
 import { VocabularyScreen } from "@/components/VocabularyScreen";
+import { useTTS } from "@/hooks/useTTS";
 import { useQueue } from "@/hooks/useQueue";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useVocabulary } from "@/hooks/useVocabulary";
@@ -52,6 +56,30 @@ import { buildTimelineTurns, getProjectLabel, parseMessages, type Activity, type
 
 type TabKey = "actions" | "recordings";
 type ActionStatus = "pending" | "in_progress" | "awaiting_feedback" | "completed" | "failed" | "cancelled";
+
+function markdownToHtml(md: string, title: string): string {
+  let html = md
+    // Code blocks
+    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#1a1a2e;color:#e0e0e0;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px"><code>$2</code></pre>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:13px">$1</code>')
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3 style="margin:16px 0 8px;font-size:16px">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 style="margin:20px 0 10px;font-size:18px">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 style="margin:24px 0 12px;font-size:22px">$1</h1>')
+    // Bold and italic
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    // Unordered lists
+    .replace(/^- (.+)$/gm, '<li style="margin:4px 0">$1</li>')
+    .replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul style="padding-left:20px;margin:8px 0">$&</ul>')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#2563eb">$1</a>')
+    // Paragraphs (lines that aren't already wrapped)
+    .replace(/^(?!<[huplo])((?!<).+)$/gm, "<p style=\"margin:8px 0;line-height:1.6\">$1</p>");
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:-apple-system,system-ui,sans-serif;padding:24px;max-width:680px;margin:0 auto;color:#1a1a1a;font-size:15px;line-height:1.6}h1{border-bottom:2px solid #e5e5e5;padding-bottom:8px}</style></head><body><h1>${title}</h1>${html}</body></html>`;
+}
 
 function getStatusDisplay(action: Action, colors: ThemeColors, isDark: boolean): { label: string; color: string; bg: string } {
   const status = action.status as ActionStatus;
@@ -126,6 +154,48 @@ function formatDuration(ms: number | undefined, startedAt?: number): string {
   return `${seconds}s`;
 }
 
+function formatMessageTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+
+  const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday, ${time}`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" }) + `, ${time}`;
+}
+
+interface ThreadMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+}
+
+function parseMessages(json: string | undefined | null): ThreadMessage[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as ThreadMessage[];
+  } catch {
+    return [];
+  }
+}
+
+// Activity types for the whimsical timeline
+type ActivityType = "skill" | "tool" | "agent" | "message" | "milestone";
+
+interface Activity {
+  id: string;
+  type: ActivityType;
+  icon: string; // Emoji
+  label: string;
+  detail?: string;
+  timestamp: number;
+  duration?: number;
+  status: "active" | "done" | "error";
+}
 
 interface Progress {
   currentActivity?: string;
@@ -231,6 +301,7 @@ export default function HomeScreen() {
   // Action detail/feedback modal state - store ID for real-time updates
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
+  const [copiedResult, setCopiedResult] = useState(false);
 
   // Handle notification taps - open action modal when tapped
   useEffect(() => {
@@ -275,6 +346,7 @@ export default function HomeScreen() {
   };
 
   const handleCloseModal = () => {
+    tts.stop();
     setSelectedActionId(null);
     setFeedbackText("");
   };
@@ -345,6 +417,27 @@ export default function HomeScreen() {
     );
   };
 
+  const handleCopyResult = async () => {
+    if (!selectedAction?.result) return;
+    await Clipboard.setStringAsync(selectedAction.result);
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopiedResult(true);
+    setTimeout(() => setCopiedResult(false), 2000);
+  };
+
+  const handleExportPdf = async () => {
+    if (!selectedAction?.result) return;
+    const markdown = selectedAction.result;
+    // Convert markdown to basic HTML for PDF rendering
+    const html = markdownToHtml(markdown, selectedAction.title);
+    try {
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, { UTI: ".pdf", mimeType: "application/pdf" });
+    } catch {
+      // User cancelled sharing
+    }
+  };
+
   const handleStartRecording = async (withPendingImages?: boolean) => {
     if (hasPermission === false) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -358,6 +451,9 @@ export default function HomeScreen() {
       pauseRecording();
     }
   };
+
+  // TTS for reading action results aloud
+  const tts = useTTS();
 
   const headerTitle = activeTab === "actions" ? "Actions" : "Recordings";
 
@@ -875,7 +971,105 @@ export default function HomeScreen() {
               {/* Result */}
               {selectedAction.result && (
                 <View style={styles.resultSection}>
-                  <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Result</Text>
+                  <View style={styles.resultHeader}>
+                    <Text style={[styles.sectionLabel, { color: colors.textPrimary, marginBottom: 0 }]}>Result</Text>
+                    <Pressable
+                      onPress={() => tts.toggle(selectedAction.result!)}
+                      style={({ pressed }) => [
+                        styles.ttsButton,
+                        {
+                          backgroundColor: tts.status !== "idle"
+                            ? colors.primary + "20"
+                            : colors.textMuted + "15",
+                        },
+                        pressed && styles.buttonPressed,
+                      ]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name={
+                          tts.status === "playing"
+                            ? "pause"
+                            : tts.status === "paused"
+                              ? "play"
+                              : "volume-high"
+                        }
+                        size={16}
+                        color={tts.status !== "idle" ? colors.primary : colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.ttsButtonText,
+                          { color: tts.status !== "idle" ? colors.primary : colors.textSecondary },
+                        ]}
+                      >
+                        {tts.status === "playing"
+                          ? "Pause"
+                          : tts.status === "paused"
+                            ? "Resume"
+                            : "Listen"}
+                      </Text>
+                    </Pressable>
+                    {tts.status !== "idle" && (
+                      <>
+                        <Pressable
+                          onPress={() => tts.cycleRate(selectedAction.result!)}
+                          style={({ pressed }) => [
+                            styles.ttsSpeedButton,
+                            { backgroundColor: colors.primary + "15" },
+                            pressed && styles.buttonPressed,
+                          ]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={[styles.ttsSpeedText, { color: colors.primary }]}>
+                            {tts.rate === 1 ? "1x" : tts.rate === 1.5 ? "1.5x" : "2x"}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={tts.stop}
+                          style={({ pressed }) => [
+                            styles.ttsStopButton,
+                            { backgroundColor: colors.error + "15" },
+                            pressed && styles.buttonPressed,
+                          ]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="stop" size={14} color={colors.error} />
+                        </Pressable>
+                      </>
+                    )}
+                    <View style={{ flex: 1 }} />
+                    <Pressable
+                      onPress={handleCopyResult}
+                      style={({ pressed }) => [
+                        styles.ttsButton,
+                        { backgroundColor: copiedResult ? colors.success + "20" : colors.textMuted + "15" },
+                        pressed && styles.buttonPressed,
+                      ]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name={copiedResult ? "checkmark" : "copy-outline"}
+                        size={14}
+                        color={copiedResult ? colors.success : colors.textSecondary}
+                      />
+                      <Text style={[styles.ttsButtonText, { color: copiedResult ? colors.success : colors.textSecondary }]}>
+                        {copiedResult ? "Copied" : "Copy"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleExportPdf}
+                      style={({ pressed }) => [
+                        styles.ttsButton,
+                        { backgroundColor: colors.textMuted + "15" },
+                        pressed && styles.buttonPressed,
+                      ]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="document-outline" size={14} color={colors.textSecondary} />
+                      <Text style={[styles.ttsButtonText, { color: colors.textSecondary }]}>PDF</Text>
+                    </Pressable>
+                  </View>
                   <View style={[styles.resultBox, { backgroundColor: colors.success + "20" }]}>
                     <Markdown style={markdownStyles}>
                       {selectedAction.result}
@@ -895,46 +1089,102 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              {/* Input for new message */}
-              <View style={styles.feedbackSection}>
-                <Text style={[styles.feedbackLabel, { color: colors.textPrimary }]}>
-                  {selectedActionMessages.length > 0 ? "Reply" : "Start a thread"}
-                </Text>
-                <TextInput
-                  style={[styles.feedbackInput, { backgroundColor: colors.backgroundElevated, color: colors.textPrimary }]}
-                  placeholder="Type your message..."
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                  value={feedbackText}
-                  onChangeText={setFeedbackText}
-                />
-                <View style={{ alignItems: "flex-end", marginTop: spacing.lg }}>
+              {/* Conversation Thread */}
+              <View style={styles.threadSection}>
+                {parseMessages(selectedAction.messages).length > 0 && (
+                  <>
+                    <View style={styles.threadHeaderRow}>
+                      <View style={[styles.threadDividerLine, { backgroundColor: colors.border }]} />
+                      <Text style={[styles.threadHeaderLabel, { color: colors.textTertiary }]}>Conversation</Text>
+                      <View style={[styles.threadDividerLine, { backgroundColor: colors.border }]} />
+                    </View>
+
+                    <View style={styles.threadMessages}>
+                      {parseMessages(selectedAction.messages).map((msg, idx) => (
+                        <View
+                          key={idx}
+                          style={[
+                            styles.chatRow,
+                            msg.role === "user" ? styles.chatRowUser : styles.chatRowAssistant,
+                          ]}
+                        >
+                          {msg.role === "assistant" && (
+                            <View style={[styles.chatAvatar, { backgroundColor: colors.primary + "20" }]}>
+                              <Ionicons name="sparkles" size={14} color={colors.primary} />
+                            </View>
+                          )}
+                          <View
+                            style={[
+                              styles.chatBubble,
+                              msg.role === "user"
+                                ? [styles.chatBubbleUser, { backgroundColor: colors.primary }]
+                                : [styles.chatBubbleAssistant, { backgroundColor: colors.backgroundElevated, borderColor: colors.border }],
+                            ]}
+                          >
+                            {msg.role === "assistant" ? (
+                              <Markdown style={{
+                                ...markdownStyles,
+                                body: {
+                                  ...markdownStyles.body,
+                                  color: colors.textPrimary,
+                                  fontSize: typography.sm,
+                                  lineHeight: typography.sm * 1.5,
+                                },
+                              }}>
+                                {msg.content}
+                              </Markdown>
+                            ) : (
+                              <Text style={[styles.chatContent, styles.chatContentUser, { color: colors.white }]}>
+                                {msg.content}
+                              </Text>
+                            )}
+                            <Text style={[
+                              styles.chatTimestamp,
+                              { color: msg.role === "user" ? "rgba(255,255,255,0.6)" : colors.textMuted },
+                            ]}>
+                              {formatMessageTime(msg.timestamp)}
+                            </Text>
+                          </View>
+                          {msg.role === "user" && (
+                            <View style={[styles.chatAvatar, { backgroundColor: colors.primary + "30" }]}>
+                              <Ionicons name="person" size={14} color={colors.primary} />
+                            </View>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {/* Message Input */}
+                <View style={[
+                  styles.chatInputContainer,
+                  { backgroundColor: colors.backgroundElevated, borderColor: colors.border },
+                ]}>
+                  <TextInput
+                    style={[styles.chatInput, { color: colors.textPrimary }]}
+                    placeholder={parseMessages(selectedAction.messages).length > 0 ? "Reply..." : "Start a conversation..."}
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    value={feedbackText}
+                    onChangeText={setFeedbackText}
+                  />
                   <Pressable
                     onPress={handleSubmitFeedback}
                     disabled={!feedbackText.trim()}
-                    style={({ pressed }) => ({
-                      paddingVertical: spacing.md,
-                      paddingHorizontal: spacing.xl,
-                      backgroundColor: feedbackText.trim() ? colors.primary : colors.backgroundElevated,
-                      borderRadius: radii.lg,
-                      opacity: pressed ? 0.8 : 1,
-                    })}
+                    style={({ pressed }) => ([
+                      styles.chatSendButton,
+                      {
+                        backgroundColor: feedbackText.trim() ? colors.primary : "transparent",
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ])}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Ionicons
-                        name="send"
-                        size={16}
-                        color={feedbackText.trim() ? colors.white : colors.textMuted}
-                      />
-                      <Text style={{
-                        color: feedbackText.trim() ? colors.white : colors.textMuted,
-                        fontSize: typography.md,
-                        fontWeight: "600",
-                        marginLeft: spacing.sm,
-                      }}>
-                        Send
-                      </Text>
-                    </View>
+                    <Ionicons
+                      name="arrow-up"
+                      size={18}
+                      color={feedbackText.trim() ? colors.white : colors.textMuted}
+                    />
                   </Pressable>
                 </View>
               </View>
@@ -1386,6 +1636,44 @@ const styles = StyleSheet.create({
   resultSection: {
     marginBottom: spacing.lg,
   },
+  resultHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  ttsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  ttsButtonText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+  },
+  ttsSpeedButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ttsSpeedText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  ttsStopButton: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   errorSection: {
     marginBottom: spacing.lg,
   },
@@ -1425,52 +1713,95 @@ const styles = StyleSheet.create({
     lineHeight: typography.sm * 1.4,
   },
   threadSection: {
+    marginTop: spacing.lg,
+  },
+  threadHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: spacing.lg,
+    gap: spacing.md,
   },
-  threadLabel: {
-    fontSize: typography.sm,
-    fontWeight: "600",
-    marginBottom: spacing.md,
+  threadDividerLine: {
+    flex: 1,
+    height: 1,
   },
-  messageBubble: {
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginBottom: spacing.sm,
-  },
-  userBubble: {
-    marginLeft: spacing.xl,
-  },
-  assistantBubble: {
-    marginRight: spacing.xl,
-  },
-  messageRole: {
+  threadHeaderLabel: {
     fontSize: typography.xs,
     fontWeight: "600",
-    marginBottom: spacing.xs,
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
-  messageContent: {
+  threadMessages: {
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+  },
+  chatRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+  },
+  chatRowUser: {
+    justifyContent: "flex-end",
+  },
+  chatRowAssistant: {
+    justifyContent: "flex-start",
+  },
+  chatAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  chatBubble: {
+    maxWidth: "78%",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radii.lg,
+  },
+  chatBubbleUser: {
+    borderBottomRightRadius: radii.xs,
+  },
+  chatBubbleAssistant: {
+    borderBottomLeftRadius: radii.xs,
+    borderWidth: 1,
+  },
+  chatContent: {
     fontSize: typography.sm,
     lineHeight: typography.sm * 1.5,
   },
-  messageTime: {
-    fontSize: typography.xs,
+  chatContentUser: {
+    fontWeight: "400",
+  },
+  chatTimestamp: {
+    fontSize: 10,
     marginTop: spacing.xs,
+    textAlign: "right",
   },
-  feedbackSection: {
-    marginTop: spacing.md,
-    alignItems: "stretch",
+  chatInputContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    paddingVertical: spacing.xs,
+    gap: spacing.sm,
   },
-  feedbackLabel: {
+  chatInput: {
+    flex: 1,
     fontSize: typography.sm,
-    fontWeight: "600",
-    marginBottom: spacing.sm,
+    maxHeight: 100,
+    paddingVertical: spacing.sm,
+    lineHeight: typography.sm * 1.4,
   },
-  feedbackInput: {
-    borderRadius: radii.md,
-    padding: spacing.md,
-    fontSize: typography.base,
-    minHeight: 80,
-    textAlignVertical: "top",
+  chatSendButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   buttonPressed: {
     opacity: 0.8,

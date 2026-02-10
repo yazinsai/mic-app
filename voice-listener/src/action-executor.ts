@@ -12,6 +12,8 @@ interface DependsOnAction {
   id: string;
   status: string;
   title: string;
+  type?: string;
+  result?: string;
 }
 
 interface Action {
@@ -821,12 +823,30 @@ RESULT FORMATTING:
 - For Project: Include deployment URL and key features
 `;
 
+  // Build dependency context: inject prior action's result if available
+  let dependencyContext = "";
+  if (action.dependsOn && action.dependsOn.length > 0) {
+    const dep = action.dependsOn[0];
+    if (dep.status === "completed" && dep.result) {
+      const depTypeLabel = dep.type ? dep.type.toLowerCase() : "prior action";
+      dependencyContext = `PRIOR ACTION RESULTS (from "${dep.title}" - ${depTypeLabel}):
+This action depends on a previously completed action. Use these results to inform your work:
+
+---
+${dep.result}
+---
+
+`;
+    }
+  }
+
   return loadPrompt("execution", {
     ACTION_ID: action.id,
     ACTION_TYPE: action.type,
     ACTION_SUBTYPE: subtypeLine,
     ACTION_TITLE: action.title,
     ACTION_DESCRIPTION: descriptionBlock,
+    DEPENDENCY_CONTEXT: dependencyContext,
     CONVERSATION_THREAD: conversationThread,
     WORKING_DIR_INSTRUCTION: workingDirInstruction,
     WORKSPACE_CLAUDE_PATH: workspaceClaudePath,
@@ -963,6 +983,7 @@ async function executeSpecificAction(actionId: string): Promise<void> {
           id: actionId,
         },
       },
+      dependsOn: {},
     },
   });
 
