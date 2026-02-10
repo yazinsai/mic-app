@@ -58,27 +58,158 @@ type TabKey = "actions" | "recordings";
 type ActionStatus = "pending" | "in_progress" | "awaiting_feedback" | "completed" | "failed" | "cancelled";
 
 function markdownToHtml(md: string, title: string): string {
-  let html = md
-    // Code blocks
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre style="background:#1a1a2e;color:#e0e0e0;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px"><code>$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code style="background:#f0f0f0;padding:2px 6px;border-radius:3px;font-size:13px">$1</code>')
+  // Process block-level elements by splitting into lines
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code blocks
+    if (line.startsWith("```")) {
+      const lang = line.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i].replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+        i++;
+      }
+      i++; // skip closing ```
+      out.push(`<pre${lang ? ` data-lang="${lang}"` : ""}><code>${codeLines.join("\n")}</code></pre>`);
+      continue;
+    }
+
+    // Tables: detect header row with pipes
+    if (line.includes("|") && i + 1 < lines.length && /^\|?[\s:]*-+[\s:]*\|/.test(lines[i + 1])) {
+      const parseRow = (r: string) =>
+        r.replace(/^\||\|$/g, "").split("|").map((c) => inline(c.trim()));
+      const headers = parseRow(line);
+      // Parse alignment from separator row
+      const sepCells = lines[i + 1].replace(/^\||\|$/g, "").split("|");
+      const aligns = sepCells.map((c) => {
+        const t = c.trim();
+        if (t.startsWith(":") && t.endsWith(":")) return "center";
+        if (t.endsWith(":")) return "right";
+        return "left";
+      });
+      i += 2;
+      const bodyRows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+        bodyRows.push(parseRow(lines[i]));
+        i++;
+      }
+      let table = "<table><thead><tr>";
+      headers.forEach((h, j) => {
+        table += `<th style="text-align:${aligns[j] || "left"}">${h}</th>`;
+      });
+      table += "</tr></thead><tbody>";
+      bodyRows.forEach((row) => {
+        table += "<tr>";
+        row.forEach((cell, j) => {
+          table += `<td style="text-align:${aligns[j] || "left"}">${cell}</td>`;
+        });
+        table += "</tr>";
+      });
+      table += "</tbody></table>";
+      out.push(table);
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      out.push("<hr>");
+      i++;
+      continue;
+    }
+
     // Headers
-    .replace(/^### (.+)$/gm, '<h3 style="margin:16px 0 8px;font-size:16px">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 style="margin:20px 0 10px;font-size:18px">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 style="margin:24px 0 12px;font-size:22px">$1</h1>')
-    // Bold and italic
+    const hMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (hMatch) {
+      const level = hMatch[1].length;
+      out.push(`<h${level}>${inline(hMatch[2])}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    // Blockquotes
+    if (line.startsWith("> ") || line === ">") {
+      const bqLines: string[] = [];
+      while (i < lines.length && (lines[i].startsWith("> ") || lines[i] === ">")) {
+        bqLines.push(lines[i].replace(/^>\s?/, ""));
+        i++;
+      }
+      out.push(`<blockquote>${bqLines.map((l) => `<p>${inline(l)}</p>`).join("")}</blockquote>`);
+      continue;
+    }
+
+    // Ordered lists
+    if (/^\d+\.\s/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(inline(lines[i].replace(/^\d+\.\s/, "")));
+        i++;
+      }
+      out.push(`<ol>${items.map((item) => `<li>${item}</li>`).join("")}</ol>`);
+      continue;
+    }
+
+    // Unordered lists
+    if (/^[-*]\s/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        items.push(inline(lines[i].replace(/^[-*]\s/, "")));
+        i++;
+      }
+      out.push(`<ul>${items.map((item) => `<li>${item}</li>`).join("")}</ul>`);
+      continue;
+    }
+
+    // Empty lines
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // Default: paragraph
+    out.push(`<p>${inline(line)}</p>`);
+    i++;
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", system-ui, sans-serif; padding: 32px; max-width: 720px; margin: 0 auto; color: #1a1a1a; font-size: 15px; line-height: 1.65; }
+  h1 { font-size: 24px; font-weight: 700; border-bottom: 2px solid #e5e5e5; padding-bottom: 10px; margin: 0 0 20px; }
+  h2 { font-size: 20px; font-weight: 700; margin: 28px 0 12px; color: #111; }
+  h3 { font-size: 17px; font-weight: 600; margin: 20px 0 8px; color: #222; }
+  h4, h5, h6 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; }
+  p { margin: 10px 0; }
+  strong { font-weight: 600; }
+  a { color: #2563eb; text-decoration: none; }
+  code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "SF Mono", Menlo, monospace; }
+  pre { background: #1e1e2e; color: #cdd6f4; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 16px 0; }
+  pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+  blockquote { border-left: 3px solid #d4af37; margin: 16px 0; padding: 8px 16px; background: #faf9f5; color: #444; }
+  blockquote p { margin: 4px 0; }
+  ul, ol { padding-left: 24px; margin: 12px 0; }
+  li { margin: 4px 0; line-height: 1.55; }
+  hr { border: none; border-top: 1px solid #e5e5e5; margin: 24px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th { background: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #555; padding: 10px 14px; border-bottom: 2px solid #d1d5db; }
+  td { padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+</style>
+</head><body><h1>${title}</h1>${out.join("\n")}</body></html>`;
+}
+
+function inline(text: string): string {
+  return text
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // Unordered lists
-    .replace(/^- (.+)$/gm, '<li style="margin:4px 0">$1</li>')
-    .replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul style="padding-left:20px;margin:8px 0">$&</ul>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:#2563eb">$1</a>')
-    // Paragraphs (lines that aren't already wrapped)
-    .replace(/^(?!<[huplo])((?!<).+)$/gm, "<p style=\"margin:8px 0;line-height:1.6\">$1</p>");
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:-apple-system,system-ui,sans-serif;padding:24px;max-width:680px;margin:0 auto;color:#1a1a1a;font-size:15px;line-height:1.6}h1{border-bottom:2px solid #e5e5e5;padding-bottom:8px}</style></head><body><h1>${title}</h1>${html}</body></html>`;
+    .replace(/~~(.+?)~~/g, "<del>$1</del>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 }
 
 function getStatusDisplay(action: Action, colors: ThemeColors, isDark: boolean): { label: string; color: string; bg: string } {
