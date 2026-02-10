@@ -57,8 +57,21 @@ import { buildTimelineTurns, getProjectLabel, parseMessages, type Activity, type
 type TabKey = "actions" | "recordings";
 type ActionStatus = "pending" | "in_progress" | "awaiting_feedback" | "completed" | "failed" | "cancelled";
 
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function inline(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/~~(.+?)~~/g, "<del>$1</del>")
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${esc(code)}</code>`)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/(?:^|\s)(https?:\/\/[^\s<]+)/g, (m, url) => m.replace(url, `<a href="${url}">${url}</a>`));
+}
+
 function markdownToHtml(md: string, title: string): string {
-  // Process block-level elements by splitting into lines
   const lines = md.split("\n");
   const out: string[] = [];
   let i = 0;
@@ -72,20 +85,19 @@ function markdownToHtml(md: string, title: string): string {
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i].replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+        codeLines.push(esc(lines[i]));
         i++;
       }
-      i++; // skip closing ```
-      out.push(`<pre${lang ? ` data-lang="${lang}"` : ""}><code>${codeLines.join("\n")}</code></pre>`);
+      i++;
+      out.push(`<div class="code-block">${lang ? `<div class="code-lang">${esc(lang)}</div>` : ""}<pre><code>${codeLines.join("\n")}</code></pre></div>`);
       continue;
     }
 
-    // Tables: detect header row with pipes
+    // Tables
     if (line.includes("|") && i + 1 < lines.length && /^\|?[\s:]*-+[\s:]*\|/.test(lines[i + 1])) {
       const parseRow = (r: string) =>
         r.replace(/^\||\|$/g, "").split("|").map((c) => inline(c.trim()));
       const headers = parseRow(line);
-      // Parse alignment from separator row
       const sepCells = lines[i + 1].replace(/^\||\|$/g, "").split("|");
       const aligns = sepCells.map((c) => {
         const t = c.trim();
@@ -99,7 +111,7 @@ function markdownToHtml(md: string, title: string): string {
         bodyRows.push(parseRow(lines[i]));
         i++;
       }
-      let table = "<table><thead><tr>";
+      let table = '<div class="table-wrap"><table><thead><tr>';
       headers.forEach((h, j) => {
         table += `<th style="text-align:${aligns[j] || "left"}">${h}</th>`;
       });
@@ -111,7 +123,7 @@ function markdownToHtml(md: string, title: string): string {
         });
         table += "</tr>";
       });
-      table += "</tbody></table>";
+      table += "</tbody></table></div>";
       out.push(table);
       continue;
     }
@@ -132,86 +144,107 @@ function markdownToHtml(md: string, title: string): string {
       continue;
     }
 
-    // Blockquotes
+    // Blockquotes (multi-line)
     if (line.startsWith("> ") || line === ">") {
       const bqLines: string[] = [];
       while (i < lines.length && (lines[i].startsWith("> ") || lines[i] === ">")) {
         bqLines.push(lines[i].replace(/^>\s?/, ""));
         i++;
       }
-      out.push(`<blockquote>${bqLines.map((l) => `<p>${inline(l)}</p>`).join("")}</blockquote>`);
+      out.push(`<blockquote>${bqLines.map((l) => (l.trim() ? `<p>${inline(l)}</p>` : "")).join("")}</blockquote>`);
       continue;
     }
 
-    // Ordered lists
+    // Ordered lists (with continuation lines)
     if (/^\d+\.\s/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-        items.push(inline(lines[i].replace(/^\d+\.\s/, "")));
+        let item = lines[i].replace(/^\d+\.\s/, "");
         i++;
+        // Grab continuation lines (indented, not a new list item or blank)
+        while (i < lines.length && lines[i].match(/^\s+\S/) && !/^\d+\.\s/.test(lines[i].trim())) {
+          item += " " + lines[i].trim();
+          i++;
+        }
+        items.push(inline(item));
       }
       out.push(`<ol>${items.map((item) => `<li>${item}</li>`).join("")}</ol>`);
       continue;
     }
 
-    // Unordered lists
+    // Unordered lists (with continuation lines)
     if (/^[-*]\s/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^[-*]\s/.test(lines[i])) {
-        items.push(inline(lines[i].replace(/^[-*]\s/, "")));
+        let item = lines[i].replace(/^[-*]\s/, "");
         i++;
+        while (i < lines.length && lines[i].match(/^\s+\S/) && !/^[-*]\s/.test(lines[i].trim())) {
+          item += " " + lines[i].trim();
+          i++;
+        }
+        items.push(inline(item));
       }
       out.push(`<ul>${items.map((item) => `<li>${item}</li>`).join("")}</ul>`);
       continue;
     }
 
     // Empty lines
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
+    if (line.trim() === "") { i++; continue; }
 
-    // Default: paragraph
-    out.push(`<p>${inline(line)}</p>`);
-    i++;
+    // Paragraph (collapse consecutive non-blank lines)
+    const pLines: string[] = [];
+    while (i < lines.length && lines[i].trim() !== "" && !lines[i].startsWith("#") && !lines[i].startsWith("```") && !lines[i].startsWith("> ") && !/^[-*]\s/.test(lines[i]) && !/^\d+\.\s/.test(lines[i]) && !/^(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) && !(lines[i].includes("|") && i + 1 < lines.length && /^\|?[\s:]*-+[\s:]*\|/.test(lines[i + 1]))) {
+      pLines.push(lines[i]);
+      i++;
+    }
+    out.push(`<p>${inline(pLines.join(" "))}</p>`);
   }
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>
-  body { font-family: -apple-system, "Helvetica Neue", system-ui, sans-serif; padding: 32px; max-width: 720px; margin: 0 auto; color: #1a1a1a; font-size: 15px; line-height: 1.65; }
-  h1 { font-size: 24px; font-weight: 700; border-bottom: 2px solid #e5e5e5; padding-bottom: 10px; margin: 0 0 20px; }
-  h2 { font-size: 20px; font-weight: 700; margin: 28px 0 12px; color: #111; }
-  h3 { font-size: 17px; font-weight: 600; margin: 20px 0 8px; color: #222; }
-  h4, h5, h6 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; }
-  p { margin: 10px 0; }
-  strong { font-weight: 600; }
-  a { color: #2563eb; text-decoration: none; }
-  code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "SF Mono", Menlo, monospace; }
-  pre { background: #1e1e2e; color: #cdd6f4; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 16px 0; }
-  pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
-  blockquote { border-left: 3px solid #d4af37; margin: 16px 0; padding: 8px 16px; background: #faf9f5; color: #444; }
-  blockquote p { margin: 4px 0; }
-  ul, ol { padding-left: 24px; margin: 12px 0; }
-  li { margin: 4px 0; line-height: 1.55; }
-  hr { border: none; border-top: 1px solid #e5e5e5; margin: 24px 0; }
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
-  th { background: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; color: #555; padding: 10px 14px; border-bottom: 2px solid #d1d5db; }
-  td { padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
-  tr:last-child td { border-bottom: none; }
-  tbody tr:nth-child(even) { background: #fafafa; }
-  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e5e5; font-size: 12px; color: #999; text-align: center; }
-  footer a { color: #999; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"Helvetica Neue","SF Pro Text",system-ui,sans-serif;padding:40px 32px;max-width:760px;margin:0 auto;color:#1c1c1e;font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+h1{font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#000;margin:0 0 8px;line-height:1.3}
+.subtitle{font-size:14px;color:#86868b;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #e5e5ea}
+h2{font-size:20px;font-weight:700;letter-spacing:-0.3px;color:#1c1c1e;margin:32px 0 12px;padding-top:20px;border-top:1px solid #f2f2f7}
+h3{font-size:17px;font-weight:700;color:#1c1c1e;margin:24px 0 8px}
+h4,h5,h6{font-size:15px;font-weight:700;color:#3a3a3c;margin:20px 0 6px}
+p{margin:12px 0;color:#3a3a3c}
+strong{font-weight:700;color:#1c1c1e}
+em{font-style:italic;color:#48484a}
+del{text-decoration:line-through;color:#86868b}
+a{color:#0071e3;text-decoration:none;font-weight:500}
+code{background:#f2f2f7;padding:2px 7px;border-radius:5px;font-size:12.5px;font-family:"SF Mono",Menlo,Consolas,monospace;color:#e8453c;font-weight:500}
+.code-block{position:relative;margin:20px 0;border-radius:10px;overflow:hidden;background:#1c1c1e}
+.code-lang{position:absolute;top:0;right:0;padding:4px 12px;font-size:11px;font-weight:600;color:#86868b;text-transform:uppercase;letter-spacing:0.5px}
+pre{padding:20px;overflow-x:auto;font-size:13px;line-height:1.6;color:#e5e5ea}
+pre code{background:none;padding:0;color:inherit;font-size:inherit;font-weight:400}
+blockquote{margin:20px 0;padding:16px 20px;background:linear-gradient(135deg,#fef9ef,#fef6e4);border-left:4px solid #d4af37;border-radius:0 8px 8px 0}
+blockquote p{margin:4px 0;color:#5d4e37;font-size:14px}
+ul,ol{padding-left:24px;margin:14px 0}
+li{margin:6px 0;line-height:1.6;color:#3a3a3c}
+li::marker{color:#86868b}
+hr{border:none;height:1px;background:linear-gradient(to right,transparent,#d1d1d6,transparent);margin:28px 0}
+.table-wrap{margin:20px 0;border-radius:10px;overflow:hidden;border:1px solid #e5e5ea}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead{background:#f9f9fb}
+th{font-weight:700;font-size:11px;letter-spacing:0.8px;text-transform:uppercase;color:#6e6e73;padding:12px 16px;border-bottom:2px solid #e5e5ea;white-space:nowrap}
+td{padding:12px 16px;border-bottom:1px solid #f2f2f7;color:#3a3a3c;vertical-align:top;line-height:1.5}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:#fafafa}
+tbody tr:hover{background:#f2f2f7}
+td code{font-size:11.5px;padding:2px 6px;background:#eeeef0;color:#6e6e73}
+td strong{color:#1c1c1e}
+footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5ea;font-size:12px;color:#aeaeb2;text-align:center;letter-spacing:0.3px}
+footer a{color:#aeaeb2;font-weight:500}
+@media print{body{padding:20px}h1{font-size:22px}.table-wrap{border-color:#ccc}th{background:#f0f0f0}footer{margin-top:32px}}
 </style>
-</head><body><h1>${title}</h1>${out.join("\n")}<footer>Generated with <a href="https://github.com/yazinsai/exec">Exec</a></footer></body></html>`;
-}
-
-function inline(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/~~(.+?)~~/g, "<del>$1</del>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+</head><body>
+<h1>${esc(title)}</h1>
+<div class="subtitle">Generated ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+${out.join("\n")}
+<footer>Generated with <a href="https://github.com/yazinsai/exec">Exec</a></footer>
+</body></html>`;
 }
 
 function getStatusDisplay(action: Action, colors: ThemeColors, isDark: boolean): { label: string; color: string; bg: string } {
