@@ -115,10 +115,10 @@ async function sendHeartbeat(status?: string): Promise<void> {
 // CLI flag to skip immediate recovery (for testing)
 const SKIP_RECOVERY = process.argv.includes("--skip-recovery");
 
-// Resolve workspace paths relative to mic-app root (one level up from voice-listener)
-const MIC_APP_ROOT = resolve(import.meta.dir, "../..");
-const WORKSPACE_PROJECTS = join(MIC_APP_ROOT, "workspace", "projects");
-const LOGS_DIR = join(MIC_APP_ROOT, "workspace", "logs");
+// Resolve paths: projects and logs live under ~/ai/
+const AI_ROOT = resolve(import.meta.dir, "../../..");
+const PROJECTS_DIR = join(AI_ROOT, "projects");
+const LOGS_DIR = join(AI_ROOT, "logs");
 
 // CLI args
 const args = process.argv.slice(2);
@@ -482,12 +482,12 @@ ${"=".repeat(60)}
   }
 
   // Resolve project directory
-  let projectDir = WORKSPACE_PROJECTS;
+  let projectDir = PROJECTS_DIR;
 
   // For Project actions without an explicit path, pre-allocate a unique directory.
   // This makes project generation deterministic and prevents collisions.
   if (action.type === "Project" && !action.projectPath) {
-    const allocated = allocateProjectDirectory(WORKSPACE_PROJECTS, action.title);
+    const allocated = allocateProjectDirectory(PROJECTS_DIR, action.title);
     action.projectPath = allocated.relativePath;
     projectDir = allocated.absolutePath;
 
@@ -502,7 +502,7 @@ ${"=".repeat(60)}
     if (isAbsolute(action.projectPath)) {
       projectDir = action.projectPath;
     } else {
-      projectDir = join(WORKSPACE_PROJECTS, action.projectPath);
+      projectDir = join(PROJECTS_DIR, action.projectPath);
     }
   }
 
@@ -713,8 +713,8 @@ Please address this feedback and continue iterating on the task.`;
 }
 
 function buildExecutionPrompt(action: Action): string {
-  // Calculate relative path to workspace/CLAUDE.md from projectDir
-  const workspaceClaudePath = action.projectPath
+  // Calculate relative path to ~/ai/CLAUDE.md from projectDir
+  const aiClaudePath = action.projectPath
     ? "../../CLAUDE.md"
     : "../CLAUDE.md";
 
@@ -723,14 +723,14 @@ function buildExecutionPrompt(action: Action): string {
   if (action.projectPath) {
     const absolutePath = isAbsolute(action.projectPath)
       ? action.projectPath
-      : join(WORKSPACE_PROJECTS, action.projectPath);
+      : join(PROJECTS_DIR, action.projectPath);
     workingDirInstruction = `Your working directory is \`${absolutePath}\`. This project should already exist.`;
   } else if (action.type === "Project") {
-    workingDirInstruction = `Your working directory is \`${WORKSPACE_PROJECTS}/\`. Create a NEW project subdirectory here.`;
+    workingDirInstruction = `Your working directory is \`${PROJECTS_DIR}/\`. Create a NEW project subdirectory here.`;
   } else if (action.type === "CodeChange") {
-    workingDirInstruction = `Your working directory is \`${WORKSPACE_PROJECTS}/\`. Locate the target project subdirectory first (it must already exist).`;
+    workingDirInstruction = `Your working directory is \`${PROJECTS_DIR}/\`. Locate the target project subdirectory first (it must already exist).`;
   } else {
-    workingDirInstruction = `Your working directory is \`${WORKSPACE_PROJECTS}/\`.`;
+    workingDirInstruction = `Your working directory is \`${PROJECTS_DIR}/\`.`;
   }
 
   // Build type-specific instruction with skill routing
@@ -744,7 +744,7 @@ function buildExecutionPrompt(action: Action): string {
       }`;
       break;
     case "Project":
-      typeSpecificInstruction = "   - Project: Research, plan, and create a NEW project in workspace/projects/. Use /frontend-design skill if building UI. Deploy web apps to dokku.";
+      typeSpecificInstruction = "   - Project: Research, plan, and create a NEW project in ~/ai/projects/. Use /frontend-design skill if building UI. Deploy web apps to dokku.";
       break;
     case "Research":
       typeSpecificInstruction = '   - Research: Use the /research skill for comprehensive multi-source analysis. CRITICAL: You MUST call `"$ACTION_CLI" result "your full research report here"` to save findings. Use markdown formatting (Summary → Details → Sources).';
@@ -849,7 +849,7 @@ ${dep.result}
     DEPENDENCY_CONTEXT: dependencyContext,
     CONVERSATION_THREAD: conversationThread,
     WORKING_DIR_INSTRUCTION: workingDirInstruction,
-    WORKSPACE_CLAUDE_PATH: workspaceClaudePath,
+    WORKSPACE_CLAUDE_PATH: aiClaudePath,
     TYPE_SPECIFIC_INSTRUCTION: typeSpecificInstruction,
     SAFEGUARDS: safeguards,
     RESULT_FORMATTING: resultFormatting,
@@ -953,7 +953,7 @@ Options:
                     Accepts: "today", ISO date (2026-01-28), or epoch timestamp
 
 Debug logging saves FULL Claude output including thinking/reasoning to
-workspace/logs/{action-id}-{timestamp}.log. The log file path is stored
+~/ai/logs/{action-id}-{timestamp}.log. The log file path is stored
 in the action record for the log watcher to tail.
 
 Actions are executed in parallel batches of up to ${MAX_CONCURRENCY} at a time.

@@ -28,9 +28,9 @@ interface ProcessResult {
   error?: string;
 }
 
-// Resolve workspace paths relative to mic-app root (one level up from voice-listener)
-const MIC_APP_ROOT = resolve(import.meta.dir, "../..");
-const WORKSPACE_PROJECTS = join(MIC_APP_ROOT, "workspace", "projects");
+// Resolve paths: projects live under ~/ai/
+const AI_ROOT = resolve(import.meta.dir, "../../..");
+const PROJECTS_DIR = join(AI_ROOT, "projects");
 
 async function downloadImages(imageUrls: string[]): Promise<string[]> {
   if (imageUrls.length === 0) return [];
@@ -118,7 +118,7 @@ export async function processTranscription(
       cmd: cmdArgs,
       stdout: "pipe",
       stderr: "pipe",
-      cwd: WORKSPACE_PROJECTS,
+      cwd: PROJECTS_DIR,
     });
 
     // Set timeout (5 minutes)
@@ -168,7 +168,7 @@ function validateExtractedActions(actions: ExtractedAction[]): ExtractedAction[]
         type: "Research",
         title: `Which project for this ${action.subtype || "code change"}?`,
         description: [
-          `Extracted a CodeChange action, but it requires an existing project in workspace/projects/.`,
+          `Extracted a CodeChange action, but it requires an existing project in ~/ai/projects/.`,
           ``,
           `Original action:`,
           `- title: ${action.title}`,
@@ -183,7 +183,7 @@ function validateExtractedActions(actions: ExtractedAction[]): ExtractedAction[]
 
     const projectDir = isAbsolute(projectPath)
       ? projectPath
-      : join(WORKSPACE_PROJECTS, projectPath);
+      : join(PROJECTS_DIR, projectPath);
 
     const existsAndIsDir = (() => {
       try {
@@ -198,7 +198,7 @@ function validateExtractedActions(actions: ExtractedAction[]): ExtractedAction[]
         type: "Research",
         title: `Unknown project: "${projectPath}"`,
         description: [
-          `Extracted a CodeChange action for "${projectPath}", but that folder doesn't exist in workspace/projects/.`,
+          `Extracted a CodeChange action for "${projectPath}", but that folder doesn't exist in ~/ai/projects/.`,
           ``,
           `Original action:`,
           `- title: ${action.title}`,

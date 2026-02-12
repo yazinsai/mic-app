@@ -56,7 +56,7 @@ Format:
       "title": "Brief title (under 80 chars)",
       "description": "Comprehensive description with ALL context needed to execute this action.",
       "status": "pending",
-      "projectPath": "REQUIRED for CodeChange: existing workspace/projects/<folder> name",
+      "projectPath": "REQUIRED for CodeChange: existing ~/ai/projects/<folder> name",
       "sequenceIndex": 1,
       "dependsOnIndex": null
     },

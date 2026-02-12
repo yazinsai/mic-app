@@ -24,11 +24,11 @@ export interface AllocatedProjectDirectory {
 }
 
 /**
- * Allocate a unique project directory under workspace/projects.
+ * Allocate a unique project directory under ~/ai/projects.
  * If the base slug already exists, appends a numeric suffix (-2, -3, ...).
  */
 export function allocateProjectDirectory(
-  workspaceProjectsDir: string,
+  projectsDir: string,
   title: string,
 ): AllocatedProjectDirectory {
   const base = slugifyProjectName(title);
@@ -36,12 +36,12 @@ export function allocateProjectDirectory(
   let candidate = base;
   let counter = 2;
 
-  while (existsSync(join(workspaceProjectsDir, candidate))) {
+  while (existsSync(join(projectsDir, candidate))) {
     candidate = `${base}-${counter}`;
     counter += 1;
   }
 
-  const absolutePath = join(workspaceProjectsDir, candidate);
+  const absolutePath = join(projectsDir, candidate);
   mkdirSync(absolutePath, { recursive: true });
 
   return {

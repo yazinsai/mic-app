@@ -86,13 +86,26 @@ That's it. Record a voice note. Watch Exec work.
 
 ---
 
-## Action UX highlights
+## Directory Structure
 
-- Action details now render a **threaded timeline** by turn: each user comment is grouped with subsequent Claude replies and tool/activity events.
-- Actions now show **project association** prominently in cards and detail view.
-- Actions tab includes **project-aware browsing**:
-  - filter chips by project
-  - grouping toggle between status and project sections
+Everything lives under `~/ai/`:
+
+```
+~/ai/
+├── CLAUDE.md                # Action execution guidelines
+├── logs/                    # Execution logs (one per action run)
+└── projects/
+    ├── CLAUDE.md            # Shared lessons & best practices
+    ├── exec/                # ← This repo
+    │   ├── app/             # Expo Router pages
+    │   ├── components/      # React Native UI
+    │   ├── lib/             # Core business logic
+    │   └── voice-listener/  # Bun workers (extraction + execution)
+    ├── my-project/          # Created by voice actions
+    └── ...
+```
+
+The workers resolve all paths from `~/ai/` — projects land in `~/ai/projects/`, logs go to `~/ai/logs/`.
 
 ## Tech
 

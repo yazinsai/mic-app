@@ -14,8 +14,8 @@ To iterate on prompts, edit the `.md` files directly.
 
 **Version tracking includes:**
 - `prompts/*.md` - Prompt templates
-- `workspace/CLAUDE.md` - Action type definitions
-- `workspace/projects/CLAUDE.md` - Project-specific lessons
+- `~/ai/CLAUDE.md` - Action type definitions
+- `~/ai/projects/CLAUDE.md` - Project-specific lessons
 
 Changes to any of these files create a new prompt version for analytics.
 
@@ -82,7 +82,7 @@ bun run src/action-executor.ts --dry-run --once --limit 1
 ## Action Types
 
 - `CodeChange`: Changes to existing code (subtype: bug|feature|refactor). Requires projectPath.
-- `Project`: New standalone projects/ideas. Executor now pre-allocates a unique directory in `workspace/projects/` from the action title (e.g. `habit-tracker`, `habit-tracker-2`) and stores it in `action.projectPath` before Claude runs.
+- `Project`: New standalone projects/ideas. Executor pre-allocates a unique directory in `~/ai/projects/` from the action title (e.g. `habit-tracker`, `habit-tracker-2`) and stores it in `action.projectPath` before Claude runs.
 - `Research`: Questions needing investigation or analysis.
 - `Write`: Content creation - posts, docs, articles, emails.
 - `UserTask`: Tasks requiring human action (has task, why_user, prep_allowed, remind_at fields).

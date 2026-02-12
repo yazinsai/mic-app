@@ -3,17 +3,17 @@ import { createHash } from "crypto";
 import { join } from "path";
 
 const PROMPTS_DIR = join(import.meta.dir, "../prompts");
-const WORKSPACE_DIR = join(import.meta.dir, "../../workspace");
-const PROJECTS_DIR = join(WORKSPACE_DIR, "projects");
+const AI_ROOT = join(import.meta.dir, "../../..");
+const PROJECTS_DIR = join(AI_ROOT, "projects");
 
 // CLAUDE.md files that affect execution behavior and should be versioned
-const WORKSPACE_CLAUDE_FILES = [
-  join(WORKSPACE_DIR, "CLAUDE.md"),
-  join(WORKSPACE_DIR, "projects/CLAUDE.md"),
+const AI_CLAUDE_FILES = [
+  join(AI_ROOT, "CLAUDE.md"),
+  join(PROJECTS_DIR, "CLAUDE.md"),
 ];
 
 /**
- * Get list of project directories in workspace/projects/
+ * Get list of project directories in ~/ai/projects/
  * Returns actual folder names, following symlinks to get the real project
  */
 export function getProjectList(): string[] {
@@ -60,8 +60,8 @@ export function loadPrompt(name: string, vars: Record<string, string>): string {
  * Hash all prompt files for versioning
  * Returns a SHA256 hash of all prompt files combined, including:
  * - prompts/*.md (extraction, execution prompts)
- * - workspace/CLAUDE.md (action type definitions)
- * - workspace/projects/CLAUDE.md (project-specific lessons)
+ * - ~/ai/CLAUDE.md (action type guidelines)
+ * - ~/ai/projects/CLAUDE.md (project-specific lessons)
  */
 export function hashAllPrompts(): string {
   // 1. Read prompts/*.md files (sorted for consistency)
@@ -73,16 +73,16 @@ export function hashAllPrompts(): string {
     `[prompts/${f}]\n${readFileSync(join(PROMPTS_DIR, f), "utf-8")}`
   );
 
-  // 2. Read workspace CLAUDE.md files (if they exist)
-  const workspaceContents = WORKSPACE_CLAUDE_FILES
+  // 2. Read AI-level CLAUDE.md files (if they exist)
+  const aiClaudeContents = AI_CLAUDE_FILES
     .filter((path) => existsSync(path))
     .map((path) => {
-      const relativePath = path.replace(WORKSPACE_DIR, "workspace");
+      const relativePath = path.replace(AI_ROOT, "ai");
       return `[${relativePath}]\n${readFileSync(path, "utf-8")}`;
     });
 
   // 3. Combine all with separator
-  const combined = [...promptContents, ...workspaceContents].join("\n---\n");
+  const combined = [...promptContents, ...aiClaudeContents].join("\n---\n");
 
   return createHash("sha256").update(combined).digest("hex");
 }
