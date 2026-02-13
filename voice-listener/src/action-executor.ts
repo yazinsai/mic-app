@@ -383,6 +383,7 @@ async function runClaudeSession(
   let toolsUsedCount = 0;
   let wasCancelled = false;
   let textOutput = ""; // Capture Claude's text output for fallback result
+  let resultReceived = false; // Track when Claude's result event arrives
 
   // Poll for cancellation requests
   const pollForCancellation = async () => {
@@ -435,7 +436,20 @@ async function runClaudeSession(
           }
           if (event.type === "result" && event.session_id) {
             sessionId = event.session_id;
+            resultReceived = true;
             console.log(`Captured session ID: ${sessionId}`);
+            // Claude CLI sometimes doesn't exit after completing — give it a
+            // few seconds to close stdout gracefully, then force-kill.
+            setTimeout(() => {
+              try {
+                if (!proc.killed) {
+                  console.log("Claude process still alive after result — force killing");
+                  proc.kill("SIGTERM");
+                }
+              } catch {
+                // already dead
+              }
+            }, 5000);
           }
           // Capture text output for fallback result
           if (event.type === "assistant") {
@@ -468,6 +482,7 @@ async function runClaudeSession(
       const event: StreamEvent = JSON.parse(buffer);
       if (event.type === "result" && event.session_id) {
         sessionId = event.session_id;
+        resultReceived = true;
         console.log(`Captured session ID: ${sessionId}`);
       }
       const formatted = formatStreamEvent(event);
@@ -484,7 +499,16 @@ async function runClaudeSession(
   }
 
   const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  const exitCode = await Promise.race([
+    proc.exited,
+    new Promise<number>((resolve) =>
+      setTimeout(() => {
+        console.log("Process exit timeout — force killing");
+        try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+        resolve(137);
+      }, 10000)
+    ),
+  ]);
 
   clearInterval(pollInterval);
 
@@ -493,7 +517,7 @@ async function runClaudeSession(
   }
 
   return {
-    success: exitCode === 0 && !wasCancelled,
+    success: (exitCode === 0 || resultReceived) && !wasCancelled,
     sessionId,
     exitCode,
     stderr,
